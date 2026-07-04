@@ -1,0 +1,51 @@
+▎ Build a personal finance assistant web app called FinSight using Next.js 14+ (App Router) with TypeScript. This replaces an existing Vite + React + wouter prototype — same features, new framework.
+▎
+▎ Stack:
+▎ - Next.js App Router, TypeScript, Tailwind CSS
+▎ - shadcn/ui components (button, card, table, textarea, badge, skeleton, toast/sonner, dialog)
+▎ - TanStack Query (@tanstack/react-query) for server state
+▎ - Zod for schema validation
+▎ - lucide-react for icons
+▎
+▎ Routes (App Router):
+▎ - / — Dashboard
+▎ - /documents — Document library / upload
+▎ - /chat — Chat interface
+▎ - Shared layout with sidebar/nav across all three (app/layout.tsx + a client AppLayout component)
+▎
+▎ Feature 1 — Document upload (/documents)
+▎ - Drag-and-drop zone plus a "Browse Files" button, accepting .pdf,.csv,.jpg,.jpeg,.png, max 10MB client-side check
+▎ - Upload via a Next.js Route Handler (app/api/documents/upload
+▎ - Show upload progress state, success/error toasts
+▎ - Below the drop zone, a table of uploaded documents: name (with type icon), date added, size, status badge (pending/processing/processed/error), delete
+▎ action
+▎ - Fetch the list via a GET /api/documents route handler + TanStack Query hook; invalidate on upload/delete
+▎
+▎ Feature 2 — Chat interface (/chat)
+▎ - Full-height chat layout: header, scrollable message list, input footer
+▎ - Empty state: if no messages, show a welcome prompt; if no documents uploaded yet, show a callout linking to /documents instead of the "ask me anything" hint
+▎ - User/assistant messages with avatar, bubble styling, timestamp
+▎ - Textarea input, Enter-to-send (Shift+Enter for newline), dislight, animated "typing" indicator
+▎ - Backed by GET /api/chat/messages and POST /api/chat/messages route handlers + TanStack Query hooks (query + mutation), auto-scroll to bottom on new
+▎ messages
+▎
+▎ Feature 3 — Dashboard (/)
+▎ - Three summary cards: Total Income, Total Spending, Net Savin with a small trend icon and "Analyzed from N documents" caption
+▎ - Recent Activity panel: list of recent transactions with icon, description, category badge, date, signed amount
+▎ - Spending by Category panel: category name + amount + percentage bar
+▎ - Loading skeletons for every section while data is fetching
+▎ - Backed by GET /api/dashboard/summary and GET /api/dashboard/activity route handlers + TanStack Query hooks
+▎
+▎ State management
+▎ - Server state (documents list, chat history, dashboard summary/activity) lives in TanStack Query, with a QueryClientProvider at the root layout
+▎ - Local UI state (drag-over flag, upload progress, chat input evant client components
+▎ - Mark interactive components "use client"; keep layout/page shells as server components where possible
+▎
+▎ Data layer
+▎ - For now, back the route handlers with in-memory/mock data (or a simple Zod-typed JSON store) so the UI is fully functional standalone — structure the API
+▎ responses so a real backend (Postgres/Supabase) can be swappede frontend hooks
+▎ Data layer
+▎ - For now, back the route handlers with in-memory/mock data (or a simple Zod-typed JSON store) so the UI is fully functional standalone — structure the API responses so a real backend (Postgres/Supabase) can be swappede frontend hooks
+▎
+▎ Set this up as a standalone Next.js app (not a pnpm workspace member yet). Once it's running, we'll decide whether to fold it into the existing monorepo
+▎ structure.
