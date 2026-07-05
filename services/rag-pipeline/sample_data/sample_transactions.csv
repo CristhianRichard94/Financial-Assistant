@@ -1,0 +1,17 @@
+date,description,category,amount,account
+2026-06-01,Monthly salary deposit,Income,4200.00,Checking
+2026-06-02,Whole Foods Market,Groceries,-86.42,Checking
+2026-06-03,Rent payment,Housing,-1850.00,Checking
+2026-06-05,Con Edison electric bill,Utilities,-92.15,Checking
+2026-06-06,Netflix subscription,Entertainment,-15.49,Credit Card
+2026-06-08,Shell gas station,Transportation,-48.30,Credit Card
+2026-06-10,Starbucks,Dining,-6.75,Credit Card
+2026-06-12,Transfer to savings account,Transfer,-500.00,Checking
+2026-06-12,Transfer to savings account,Transfer,500.00,Savings
+2026-06-15,Fidelity 401k contribution,Retirement,-300.00,Checking
+2026-06-18,Trader Joe's,Groceries,-64.20,Checking
+2026-06-20,Spotify subscription,Entertainment,-11.99,Credit Card
+2026-06-22,Amazon.com purchase,Shopping,-142.87,Credit Card
+2026-06-25,Chase credit card payment,Credit Card Payment,-600.00,Checking
+2026-06-28,Gym membership,Health & Fitness,-45.00,Checking
+2026-06-30,Interest earned,Income,2.14,Savings
