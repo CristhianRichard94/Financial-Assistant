@@ -8,14 +8,22 @@ import type { DashboardSummary, Transaction } from "@/lib/store";
 function useDashboardSummary() {
   return useQuery<DashboardSummary>({
     queryKey: ["dashboard", "summary"],
-    queryFn: () => fetch("/api/dashboard/summary").then((r) => r.json()),
+    queryFn: async () => {
+      const res = await fetch("/api/dashboard/summary");
+      if (!res.ok) throw new Error("Failed to load dashboard summary");
+      return res.json();
+    },
   });
 }
 
 function useActivity() {
   return useQuery<Transaction[]>({
     queryKey: ["dashboard", "activity"],
-    queryFn: () => fetch("/api/dashboard/activity").then((r) => r.json()),
+    queryFn: async () => {
+      const res = await fetch("/api/dashboard/activity");
+      if (!res.ok) throw new Error("Failed to load recent activity");
+      return res.json();
+    },
   });
 }
 
