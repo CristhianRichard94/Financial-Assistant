@@ -61,11 +61,15 @@ Not verifiable in this sandbox: live ingestion/embedding/Claude calls (no real A
 
 All three services run locally with placeholder Supabase/OpenAI/Anthropic credentials (`services/rag-api/.env`, `artifacts/finsight/.env.local` — both gitignored). Confirmed: pages load, internal-API-key auth guard works, the upload-size DoS fix holds (clean 400, server survives an 11MB upload), and Supabase/Anthropic call failures degrade gracefully (clean error JSON, chat falls back to a friendly reply) instead of crashing.
 
-This testing surfaced and fixed one bug: `artifacts/api-server`'s mirrored upload route leaked a raw stack trace (500) on oversized files instead of a clean 400. Fixed, reviewed (ship/ship), merged `c7b6549` (`fix/multer-error-leak`, worktree/branch removed).
+This testing surfaced and fixed two bugs:
+1. `artifacts/api-server`'s mirrored upload route leaked a raw stack trace (500) on oversized files instead of a clean 400. Fixed, reviewed (ship/ship), merged `c7b6549` (`fix/multer-error-leak`, worktree/branch removed).
+2. Every frontend data-fetching hook (`DocumentsView`, `ChatView`, `DashboardView`) parsed `fetch()` responses as JSON without checking `res.ok`, so a real backend error crashed the Documents page (`data.some is not a function` in `refetchInterval`) instead of showing an error state. Fixed all 5 call sites + added error-state UI to `DocumentsView`/`ChatView`. Reviewed (ship/ship — both reviewers noted no browser tooling was available in this sandbox to reproduce the crash directly; verified by code inspection + typecheck instead), merged `48bf1ce` (`fix/query-error-handling`, worktree/branch removed).
 
 ## Currently in flight
 
 Nothing blocking. Remaining optional follow-ups (all non-blocking, flagged by reviewers as out of scope for this pass):
 - `artifacts/finsight/src/app/api/chat/messages/route.ts` has the same unbounded-`req.json()`-buffering pattern as the fixed upload route, but it pre-dates this feature — not a regression, tracked as a future ticket.
 - Other Multer error codes (e.g. `LIMIT_UNEXPECTED_FILE`) on `api-server` still fall to a generic 500 rather than a 400 — no information leak, just the "wrong" status code; flagged by both reviewers as non-blocking.
+- `ChatView`'s secondary `useDocuments()` query (used only for `hasDocuments`) has no dedicated error-state UI — a backend outage silently renders as "no documents" rather than an error; flagged by QA as non-blocking.
+- No browser/Playwright automation available in this sandbox — the query-error-handling fix was verified by code inspection, typecheck, and curl rather than an actual browser repro. Worth confirming visually in a real browser when possible.
 - Live AWS deployment and live end-to-end credential testing are the user's to run whenever ready.

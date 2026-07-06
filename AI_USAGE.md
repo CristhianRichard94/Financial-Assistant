@@ -267,6 +267,42 @@ Merged to `main` (`c7b6549`, fix commit `c7bf400`); worktree and
 `fix/multer-error-leak` branch removed after merge.
 ```
 
+```
+### 2026-07-06 — Client-side crash from unchecked fetch() error responses (git worktree: fix/query-error-handling)
+**Tool:** Claude Code
+**Prompt:** (pasted a live browser stack trace)
+> src/components/views/DocumentsView.tsx (29:34) @ useDocuments.useQuery [as refetchInterval]
+> const hasProcessing = data.some(...)
+> TypeError: data.some is not a function
+
+**Output summary:** Root cause: every TanStack Query `queryFn` in the frontend
+(`DocumentsView.tsx`, `ChatView.tsx` x2, `DashboardView.tsx` x2 — 5 call sites total)
+used `fetch(url).then((r) => r.json())` with no `res.ok` check. `fetch()` only rejects
+on network failure, not on a non-2xx HTTP status, so once `/api/documents` and
+`/api/chat/messages` started proxying to the real (frequently-failing, in this
+credential-less sandbox) `rag-api` backend, an error body like `{"error": "..."}` with
+status 502 was treated as valid data — `DocumentsView`'s `refetchInterval` then called
+`.some()` on that object and crashed the page.
+**Resolution brief:** `software-engineer` fixed all 5 queryFns to check `res.ok` and
+throw before parsing, and added distinct `isError` UI states to `DocumentsView` and
+`ChatView` (matching the existing empty-state visual pattern) so a failed fetch shows a
+clear message instead of crashing or (for `ChatView`'s messages list) silently looking
+like an empty conversation. `DashboardView` only got the defensive `queryFn` fix, no new
+UI, since it's still backed by the in-memory mock store and has no live-reproducible
+failure today. Both `qa-engineer` and `security-engineer` shipped on the first pass.
+Both reviews flagged the same residual gap: no browser/Playwright tooling was available
+in this sandbox to reproduce the original client-side crash directly, so verification
+relied on code inspection + typecheck + curl (confirming pages return 200, no server
+error) rather than an actual browser repro — noted, not treated as blocking, since the
+fix is straightforward and the reasoning about React Query's `data`/`isError` semantics
+is based on well-documented library behavior.
+**Manual changes after:** none — both reviewers' verdicts were clean on the first
+round.
+
+Merged to `main` (`48bf1ce`, fix commit `c723963`); worktree and
+`fix/query-error-handling` branch removed after merge.
+```
+
 ## Claude Code Skills
 
 Two Skills added 2026-07-06 in `.claude/skills/`, both referenced from `replit.md`'s
