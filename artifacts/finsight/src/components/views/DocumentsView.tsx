@@ -22,7 +22,11 @@ import type { Document } from "@/lib/store";
 function useDocuments() {
   return useQuery<Document[]>({
     queryKey: ["documents"],
-    queryFn: () => fetch("/api/documents").then((r) => r.json()),
+    queryFn: async () => {
+      const res = await fetch("/api/documents");
+      if (!res.ok) throw new Error("Failed to load documents");
+      return res.json();
+    },
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data) return false;
@@ -58,7 +62,7 @@ function StatusBadge({ status }: { status: Document["status"] }) {
 
 export function DocumentsView() {
   const queryClient = useQueryClient();
-  const { data: documents, isLoading } = useDocuments();
+  const { data: documents, isLoading, isError } = useDocuments();
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
@@ -206,6 +210,11 @@ export function DocumentsView() {
                 <div className="w-6 h-6 bg-[hsl(var(--muted))] rounded" />
               </div>
             ))}
+          </div>
+        ) : isError ? (
+          <div className="px-6 py-16 text-center">
+            <AlertCircle className="w-10 h-10 text-[hsl(var(--muted-foreground))]/40 mx-auto mb-3" />
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">Couldn&apos;t load your documents. Please try again.</p>
           </div>
         ) : !documents?.length ? (
           <div className="px-6 py-16 text-center">

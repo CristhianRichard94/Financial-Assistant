@@ -10,14 +10,22 @@ import type { ChatMessage, Document } from "@/lib/store";
 function useMessages() {
   return useQuery<ChatMessage[]>({
     queryKey: ["chat", "messages"],
-    queryFn: () => fetch("/api/chat/messages").then((r) => r.json()),
+    queryFn: async () => {
+      const res = await fetch("/api/chat/messages");
+      if (!res.ok) throw new Error("Failed to load messages");
+      return res.json();
+    },
   });
 }
 
 function useDocuments() {
   return useQuery<Document[]>({
     queryKey: ["documents"],
-    queryFn: () => fetch("/api/documents").then((r) => r.json()),
+    queryFn: async () => {
+      const res = await fetch("/api/documents");
+      if (!res.ok) throw new Error("Failed to load documents");
+      return res.json();
+    },
   });
 }
 
@@ -75,7 +83,7 @@ function TypingIndicator() {
 
 export function ChatView() {
   const queryClient = useQueryClient();
-  const { data: messages, isLoading } = useMessages();
+  const { data: messages, isLoading, isError } = useMessages();
   const { data: documents } = useDocuments();
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -141,6 +149,11 @@ export function ChatView() {
         {isLoading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="w-6 h-6 animate-spin text-[hsl(var(--muted-foreground))]" />
+          </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center h-full py-16 text-center">
+            <AlertCircle className="w-10 h-10 text-[hsl(var(--muted-foreground))]/40 mb-3" />
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">Couldn&apos;t load messages. Please try again.</p>
           </div>
         ) : !messages?.length ? (
           <div className="flex flex-col items-center justify-center h-full py-16 text-center space-y-4">
