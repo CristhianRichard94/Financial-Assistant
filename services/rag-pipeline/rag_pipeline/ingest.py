@@ -21,44 +21,15 @@ class IngestResult:
     embedding_dimensions: int
 
 
-def create_pending_document(
-    filename: str,
+def ingest_document(
+    path: str | Path,
     metadata: dict[str, Any] | None = None,
     settings: Settings | None = None,
-) -> str:
-    """Insert a `documents` row and return its new id.
-
-    Status is left unset so the table's own default (`'pending'`, see
-    sql/002_create_documents_table.sql) applies. This is split out from
-    `process_document` so callers (e.g. an HTTP upload endpoint) can create
-    the row and respond to the client immediately, then process the file
-    asynchronously.
-    """
-    settings = settings or load_settings()
-    supabase = get_supabase_client(settings.supabase_url, settings.supabase_service_key)
-
-    document_row = (
-        supabase.table("documents")
-        .insert(
-            {
-                "filename": filename,
-                "metadata": metadata or {},
-            }
-        )
-        .execute()
-    )
-    return document_row.data[0]["id"]
-
-
-def process_document(
-    document_id: str,
-    path: str | Path,
-    settings: Settings | None = None,
 ) -> IngestResult:
-    """Parse, chunk, embed, and store a local file for an existing document row.
+    """Ingest a single local PDF or CSV file into Supabase.
 
     Steps:
-    1. Set the `documents` row's status to "processing".
+    1. Insert a `documents` row (status="processing").
     2. Parse the file into raw text and split it into overlapping token chunks.
     3. Embed all chunks in one batched OpenAI request.
     4. Batch-insert all chunks into `document_chunks`.
@@ -75,9 +46,18 @@ def process_document(
 
     supabase = get_supabase_client(settings.supabase_url, settings.supabase_service_key)
 
-    supabase.table("documents").update({"status": "processing"}).eq(
-        "id", document_id
-    ).execute()
+    document_row = (
+        supabase.table("documents")
+        .insert(
+            {
+                "filename": path.name,
+                "status": "processing",
+                "metadata": metadata or {},
+            }
+        )
+        .execute()
+    )
+    document_id = document_row.data[0]["id"]
 
     try:
         raw_text = parse_document(path)
@@ -117,49 +97,3 @@ def process_document(
             "id", document_id
         ).execute()
         raise
-
-
-def mark_document_failed(document_id: str, settings: Settings | None = None) -> None:
-    """Best-effort: set a `documents` row's status to "failed".
-
-    `process_document` already marks its own row "failed" for failures that
-    occur after its first Supabase status update ("processing"). This
-    function exists as a fallback for callers (e.g. the HTTP layer's
-    background task in rag_api) that need to mark a document failed even
-    when the failure happened *before* `process_document` got far enough to
-    do that itself (e.g. `load_settings()` raising on a missing env var, or
-    the Supabase client construction/first call itself failing). It loads
-    its own settings/client independently rather than reusing anything the
-    caller may have already tried to build, since that's exactly what may
-    have failed.
-
-    Raises if the update itself fails (e.g. Supabase is unreachable) -
-    callers that want this to be fully best-effort should catch and log,
-    not let a secondary failure here mask the original ingestion error.
-    """
-    settings = settings or load_settings()
-    supabase = get_supabase_client(settings.supabase_url, settings.supabase_service_key)
-    supabase.table("documents").update({"status": "failed"}).eq(
-        "id", document_id
-    ).execute()
-
-
-def ingest_document(
-    path: str | Path,
-    metadata: dict[str, Any] | None = None,
-    settings: Settings | None = None,
-) -> IngestResult:
-    """Ingest a single local PDF or CSV file into Supabase, end to end.
-
-    Thin wrapper around `create_pending_document` + `process_document`, kept
-    for backwards compatibility with existing callers (e.g.
-    scripts/test_ingest_and_query.py) that expect one call to do everything
-    synchronously.
-    """
-    settings = settings or load_settings()
-    path = Path(path)
-    if not path.exists():
-        raise FileNotFoundError(f"No such file: {path}")
-
-    document_id = create_pending_document(path.name, metadata=metadata, settings=settings)
-    return process_document(document_id, path, settings=settings)
