@@ -1,0 +1,15 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+
+# CDK
+infra/cdk.out/
+infra/.venv/

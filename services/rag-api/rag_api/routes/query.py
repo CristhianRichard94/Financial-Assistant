@@ -1,0 +1,38 @@
+"""Question-answering route: retrieve relevant chunks, then ask Claude.
+
+Uses `rag_pipeline.search(...)` (module-qualified attribute access) so tests
+can patch `rag_pipeline.search` directly.
+"""
+
+from __future__ import annotations
+
+import logging
+
+import rag_pipeline
+from fastapi import APIRouter, Depends, HTTPException, status
+
+from rag_api import anthropic_client
+from rag_api.auth import require_internal_api_key
+from rag_api.config import load_rag_api_settings
+from rag_api.schemas import QueryRequest, QueryResponse
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(dependencies=[Depends(require_internal_api_key)])
+
+
+@router.post("/query", response_model=QueryResponse)
+def query(request: QueryRequest) -> QueryResponse:
+    settings = load_rag_api_settings()
+
+    try:
+        results = rag_pipeline.search(request.question, k=5)
+        answer, sources = anthropic_client.ask_claude(request.question, results, settings)
+    except Exception:
+        logger.exception("Failed to answer query")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to answer question.",
+        ) from None
+
+    return QueryResponse(answer=answer, sources=sources)

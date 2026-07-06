@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "rag-pipeline"
-version = "0.1.0"
+version = "0.2.0"
 description = "Standalone RAG document ingestion and retrieval pipeline for FinSight, backed by Supabase (pgvector) and OpenAI embeddings."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -20,6 +20,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "fpdf2>=2.7.0",
+    "pytest>=8.0.0",
+    "pytest-mock>=3.14.0",
 ]
 
 [tool.hatch.build.targets.wheel]
