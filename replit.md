@@ -39,10 +39,18 @@ AI-powered personal finance assistant that analyzes uploaded documents (PDFs, CS
 ## Architecture decisions
 
 - Next.js frontend at `/` handles routing; Express API server owns all `/api/*` paths via the shared reverse proxy
-- In-memory store in the Express server (not Next.js API routes) so the `/api` path routing works correctly with the monorepo proxy
-- Next.js API route files exist but are unreachable through the proxy — all real API logic lives in Express
-- Mock data seeded with realistic transactions; `finSightStore` simulates async document processing with `pending → processing → processed` status transitions
+- Documents and chat now proxy server-side to a real Python RAG backend (`services/rag-api/`) instead of the mock store — see "RAG backend" below. Dashboard summary/activity are still in-memory mocks.
+- It's unclear which of Next.js Route Handlers vs. the Express proxy is actually live in the deployed environment, so the RAG API proxy logic is mirrored in both `artifacts/finsight/src/app/api/**` and `artifacts/api-server/src/routes/finsight.ts` — keep both in sync when changing `/documents*` or `/chat/messages` routing (see the `pnpm-workspace` skill)
+- `finSightStore` (dashboard only) simulates mock in-memory data
 - Documents page auto-refetches every 2s while any document is in `pending` or `processing` state
+
+## RAG backend (`services/rag-pipeline/`, `services/rag-api/`)
+
+- `services/rag-pipeline/` — Python library: parse PDF/CSV → chunk → embed (OpenAI) → store in Supabase/pgvector → similarity search
+- `services/rag-api/` — FastAPI service wrapping it over HTTP: `GET /healthz`, `GET /documents`, `POST /upload`, `DELETE /documents/{id}`, `POST /query` (retrieve top-k chunks → Claude synthesizes an answer)
+- Frontend talks to it server-side only, via `RAG_API_BASE_URL` + a shared-secret `X-Internal-Api-Key` header — never called directly from the browser
+- AWS deploy artifacts (ECS Fargate + CDK) exist in `services/rag-api/infra/` but have never been applied — no AWS credentials in this environment; see `services/rag-api/DEPLOYMENT.md`
+- See the `rag-api` skill for install/run/test/deploy commands
 
 ## Product
 
@@ -52,8 +60,8 @@ AI-powered personal finance assistant that analyzes uploaded documents (PDFs, CS
 
 ## Gotchas
 
-- The Express API server intercepts `/api/*` before Next.js — adding API routes to `src/app/api/` won't work through the proxy
-- To swap in a real database: replace `finSightStore.ts` with Drizzle-backed queries and provision a DB with `pnpm --filter @workspace/db run push`
+- The Express API server intercepts `/api/*` before Next.js in the deployed environment — this is why the RAG proxy logic is mirrored in both places, see above
+- To swap in a real database for dashboard data: replace `finSightStore.ts` with Drizzle-backed queries and provision a DB with `pnpm --filter @workspace/db run push`
 - `react-dropzone` requires `"use client"` — already applied in DocumentsView
 - Next.js dev server needs `PORT` env var and is started with `next dev -p $PORT`
 
@@ -63,4 +71,5 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Pointers
 
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and the `/api/*` dual-routing gotcha
+- See the `rag-api` skill for the Python RAG backend's install/run/test/deploy commands
