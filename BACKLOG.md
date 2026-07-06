@@ -57,8 +57,15 @@ Not verifiable in this sandbox: live ingestion/embedding/Claude calls (no real A
 
 ---
 
+## Verified locally (2026-07-06)
+
+All three services run locally with placeholder Supabase/OpenAI/Anthropic credentials (`services/rag-api/.env`, `artifacts/finsight/.env.local` — both gitignored). Confirmed: pages load, internal-API-key auth guard works, the upload-size DoS fix holds (clean 400, server survives an 11MB upload), and Supabase/Anthropic call failures degrade gracefully (clean error JSON, chat falls back to a friendly reply) instead of crashing.
+
+This testing surfaced and fixed one bug: `artifacts/api-server`'s mirrored upload route leaked a raw stack trace (500) on oversized files instead of a clean 400. Fixed, reviewed (ship/ship), merged `c7b6549` (`fix/multer-error-leak`, worktree/branch removed).
+
 ## Currently in flight
 
 Nothing blocking. Remaining optional follow-ups (all non-blocking, flagged by reviewers as out of scope for this pass):
 - `artifacts/finsight/src/app/api/chat/messages/route.ts` has the same unbounded-`req.json()`-buffering pattern as the fixed upload route, but it pre-dates this feature — not a regression, tracked as a future ticket.
+- Other Multer error codes (e.g. `LIMIT_UNEXPECTED_FILE`) on `api-server` still fall to a generic 500 rather than a 400 — no information leak, just the "wrong" status code; flagged by both reviewers as non-blocking.
 - Live AWS deployment and live end-to-end credential testing are the user's to run whenever ready.

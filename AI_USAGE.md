@@ -234,6 +234,39 @@ Merged to `main` (`558d839`, on top of merge `1dd0c2a`); worktree and
 `feature/python-rag-api` branch removed after merge, per `CLAUDE.md` step 8.
 ```
 
+```
+### 2026-07-06 — Local server smoke test surfaces a leak bug (git worktree: fix/multer-error-leak)
+**Tool:** Claude Code
+**Prompt:**
+> lets start up servers to test locally
+
+**Output summary:** Started all three services locally (rag-api on :8000 with
+placeholder Supabase/OpenAI/Anthropic credentials, finsight on :23970, api-server on
+:8080) and smoke-tested them with curl: page loads, the internal-API-key auth guard,
+the round-4 upload-size DoS fix (clean 400 + server survives an 11MB upload), and
+graceful-degradation behavior when Supabase/Anthropic calls fail (clean error JSON,
+chat even falls back to a friendly "couldn't process that" reply instead of erroring
+the whole request). This testing surfaced a real bug: the mirrored Express route
+(`artifacts/api-server/src/routes/finsight.ts`) had no error-handling middleware, so
+Multer's file-too-large error fell through to Express's default handler and leaked a
+raw HTML stack trace (with internal `node_modules` file paths) with HTTP 500, instead
+of the clean 400 JSON its Next.js counterpart returns for the same input.
+**Resolution brief:** Asked the user how to handle it (fix now via the full
+worktree+review workflow / log for later / patch directly on `main`); user chose the
+full workflow. `software-engineer` added a catch-all Express error-handling middleware
+in `app.ts` — maps `MulterError` with code `LIMIT_FILE_SIZE` to a clean 400, and any
+other unhandled error to a generic 500 with no error details ever serialized into the
+response (the real error is still logged server-side via the existing pino logger).
+Both `qa-engineer` and `security-engineer` reviewed and shipped on the first pass — no
+fix rounds needed. Re-verified live after merging: the same 11MB-upload repro that
+found the bug now returns the clean 400, matching the Next.js route exactly.
+**Manual changes after:** none — both reviewers' verdicts were clean on the first
+round.
+
+Merged to `main` (`c7b6549`, fix commit `c7bf400`); worktree and
+`fix/multer-error-leak` branch removed after merge.
+```
+
 ## Claude Code Skills
 
 Two Skills added 2026-07-06 in `.claude/skills/`, both referenced from `replit.md`'s
