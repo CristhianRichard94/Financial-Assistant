@@ -177,9 +177,9 @@ export function ChatView() {
 
       {/* No documents callout */}
       {!hasDocuments && !isLoading && (
-        <div className="mx-4 lg:mx-8 mb-3 flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm">
-          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-          <span className="text-amber-700 flex-1">
+        <div className="mx-4 lg:mx-8 mb-3 flex items-center gap-3 px-4 py-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg text-sm">
+          <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+          <span className="text-amber-700 dark:text-amber-400 flex-1">
             No processed documents yet.{" "}
             <Link href="/documents" className="font-medium underline">
               Upload a document

@@ -39,17 +39,17 @@ function useDocuments() {
 }
 
 function DocTypeIcon({ type }: { type: Document["type"] }) {
-  if (type === "pdf") return <FileText className="w-4 h-4 text-red-500" />;
-  if (type === "csv") return <Table2 className="w-4 h-4 text-emerald-500" />;
-  return <Image className="w-4 h-4 text-blue-500" />;
+  if (type === "pdf") return <FileText className="w-4 h-4 text-red-500 dark:text-red-400" />;
+  if (type === "csv") return <Table2 className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />;
+  return <Image className="w-4 h-4 text-blue-500 dark:text-blue-400" />;
 }
 
 function StatusBadge({ status }: { status: Document["status"] }) {
   const map = {
-    pending: { label: "Pending", color: "bg-amber-50 text-amber-700", icon: <Clock className="w-3 h-3" /> },
-    processing: { label: "Processing", color: "bg-blue-50 text-blue-700", icon: <Loader2 className="w-3 h-3 animate-spin" /> },
-    processed: { label: "Processed", color: "bg-emerald-50 text-emerald-700", icon: <CheckCircle2 className="w-3 h-3" /> },
-    error: { label: "Error", color: "bg-red-50 text-red-700", icon: <AlertCircle className="w-3 h-3" /> },
+    pending: { label: "Pending", color: "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400", icon: <Clock className="w-3 h-3" /> },
+    processing: { label: "Processing", color: "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400", icon: <Loader2 className="w-3 h-3 animate-spin" /> },
+    processed: { label: "Processed", color: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400", icon: <CheckCircle2 className="w-3 h-3" /> },
+    error: { label: "Error", color: "bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-400", icon: <AlertCircle className="w-3 h-3" /> },
   } as const;
   const { label, color, icon } = map[status];
   return (
@@ -139,7 +139,7 @@ export function DocumentsView() {
       <div
         {...getRootProps()}
         className={cn(
-          "border-2 border-dashed rounded-xl p-10 text-center transition-all cursor-default",
+          "border-2 border-dashed rounded-xl p-10 text-center transition-all duration-200 ease-out cursor-default",
           isDragActive
             ? "border-[hsl(var(--primary))] bg-[hsl(var(--accent))]"
             : "border-[hsl(var(--border))] hover:border-[hsl(var(--primary))]/50 hover:bg-[hsl(var(--muted))]/30"
@@ -235,7 +235,7 @@ export function DocumentsView() {
               </thead>
               <tbody className="divide-y divide-[hsl(var(--border))]">
                 {documents.map((doc) => (
-                  <tr key={doc.id} className="hover:bg-[hsl(var(--muted))]/20 transition-colors">
+                  <tr key={doc.id} className="hover:bg-[hsl(var(--muted))]/20 transition-colors duration-150">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <DocTypeIcon type={doc.type} />
@@ -257,7 +257,7 @@ export function DocumentsView() {
                       <button
                         onClick={() => deleteMutation.mutate(doc.id)}
                         disabled={deleteMutation.isPending}
-                        className="p-1.5 rounded-lg hover:bg-red-50 hover:text-red-600 text-[hsl(var(--muted-foreground))] transition-colors disabled:opacity-50"
+                        className="p-1.5 rounded-lg hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/15 dark:hover:text-red-400 text-[hsl(var(--muted-foreground))] transition-colors disabled:opacity-50"
                         aria-label="Delete document"
                       >
                         <Trash2 className="w-4 h-4" />

@@ -44,15 +44,15 @@ function StatCard({
   const trendLabel = trend > 0 ? `+${trend}%` : `${trend}%`;
 
   return (
-    <div className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl p-6 flex flex-col gap-3 shadow-sm">
+    <div className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl p-6 flex flex-col gap-3 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:-translate-y-0.5">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium text-[hsl(var(--muted-foreground))]">{label}</span>
         <span
           className={cn(
             "flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full",
             positive
-              ? "bg-emerald-50 text-emerald-700"
-              : "bg-red-50 text-red-600"
+              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400"
+              : "bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-400"
           )}
         >
           <TrendIcon className="w-3 h-3" />
@@ -150,7 +150,7 @@ export function DashboardView() {
               ))
             ) : (
               activity?.map((tx) => (
-                <div key={tx.id} className="px-6 py-4 flex items-center gap-4 hover:bg-[hsl(var(--muted))]/30 transition-colors">
+                <div key={tx.id} className="px-6 py-4 flex items-center gap-4 hover:bg-[hsl(var(--muted))]/30 transition-colors duration-150">
                   <div className="w-10 h-10 bg-[hsl(var(--accent))] rounded-full flex items-center justify-center text-lg shrink-0">
                     {tx.icon}
                   </div>
@@ -166,7 +166,7 @@ export function DashboardView() {
                   <span
                     className={cn(
                       "text-sm font-semibold shrink-0",
-                      tx.amount >= 0 ? "text-emerald-600" : "text-[hsl(var(--foreground))]"
+                      tx.amount >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-[hsl(var(--foreground))]"
                     )}
                   >
                     {tx.amount >= 0 ? "+" : ""}
