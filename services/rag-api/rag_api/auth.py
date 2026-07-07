@@ -1,11 +1,10 @@
-"""Defense-in-depth shared-secret authentication for the RAG API.
+"""Primary shared-secret authentication for the RAG API.
 
-This service is designed to sit behind network-level access controls (an
-internal ALB reachable only from the frontend's security group - see
-infra/rag_api_stack.py and DEPLOYMENT.md), but network configuration alone
-is easy to misconfigure or drift over time. This module adds a second,
-application-level layer that fails closed even if the network boundary is
-ever accidentally opened up: every route except /healthz requires a valid
+The ALB fronting this service is public (reachable through the CloudFront
+distribution in front of it - see infra/rag_api_stack.py and
+DEPLOYMENT.md), so there is no network-level access control backing this
+up: this header check is the primary access control for the service, not
+a defense-in-depth layer. Every route except /healthz requires a valid
 `X-Internal-Api-Key` header matching a pre-shared secret.
 """
 

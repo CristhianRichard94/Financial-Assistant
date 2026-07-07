@@ -180,6 +180,12 @@ cd services/rag-api/infra
 cdk destroy
 ```
 
+No context flags are required - the stack no longer needs an ACM certificate
+or custom domain (see step 4). Note that deleting a CloudFront distribution
+takes several minutes (CloudFront has to disable it globally before it can be
+removed), so `cdk destroy` will sit and wait on that step; this is normal, not
+a hang.
+
 This does not delete the Secrets Manager secrets created in step 2 (by
 design, they're managed independently) - delete them manually with
 `aws secretsmanager delete-secret` if you no longer need them.

@@ -29,6 +29,12 @@ export interface QueryResult {
   sources: QuerySource[];
 }
 
+/** Base URLs that are allowed to use plaintext HTTP - local development
+ * only. Everything else must be HTTPS, since the shared-secret header is
+ * the primary access control (see internalAuthHeaders() below) and must
+ * never travel over the public internet in cleartext. */
+const HTTP_ALLOWED_HOSTS = new Set(["localhost", "127.0.0.1"]);
+
 function getBaseUrl(): string {
   const baseUrl = process.env.RAG_API_BASE_URL;
   if (!baseUrl) {
@@ -37,7 +43,28 @@ function getBaseUrl(): string {
         ".env.local and set it to the rag-api service's URL (e.g. http://localhost:8000)."
     );
   }
-  return baseUrl.replace(/\/$/, "");
+  const trimmed = baseUrl.replace(/\/$/, "");
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    throw new Error(`RAG_API_BASE_URL is not a valid URL: "${trimmed}".`);
+  }
+
+  const isHttps = parsed.protocol === "https:";
+  const isAllowedLocalHttp =
+    parsed.protocol === "http:" && HTTP_ALLOWED_HOSTS.has(parsed.hostname);
+  if (!isHttps && !isAllowedLocalHttp) {
+    throw new Error(
+      `RAG_API_BASE_URL must use HTTPS ("${trimmed}" does not). The shared-secret ` +
+        "internal API key header is rag-api's primary access control and must not be " +
+        "sent over plaintext HTTP, except when talking to a locally-run rag-api on " +
+        "localhost/127.0.0.1."
+    );
+  }
+
+  return trimmed;
 }
 
 function getInternalApiKey(): string {
@@ -52,8 +79,10 @@ function getInternalApiKey(): string {
 }
 
 /** Every request to rag-api must carry this shared-secret header - see
- * rag_api/auth.py. This is defense-in-depth on top of network isolation
- * (rag-api's ALB is internal-only in production). */
+ * rag_api/auth.py. This is the primary access control for rag-api: its ALB
+ * is public (fronted by CloudFront), so there is no network isolation
+ * backing this up. getBaseUrl() enforces HTTPS so this header is never
+ * sent in cleartext. */
 function internalAuthHeaders(): Record<string, string> {
   return { "X-Internal-Api-Key": getInternalApiKey() };
 }

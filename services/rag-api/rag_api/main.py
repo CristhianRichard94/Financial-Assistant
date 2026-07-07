@@ -19,6 +19,15 @@ app = FastAPI(
         "listing, deletion, and question answering over ingested documents."
     ),
     version="0.1.0",
+    # The ALB fronting this service is public (see infra/rag_api_stack.py),
+    # so the auto-generated docs/OpenAPI schema routes are disabled - they
+    # bypass require_internal_api_key entirely (it's only applied at the
+    # router level on documents.router/query.router, not on app-level
+    # routes), which would otherwise let anyone on the internet pull the
+    # full API schema without authentication.
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 # Cheap, pre-parsing rejection of any request whose declared Content-Length

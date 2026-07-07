@@ -9,10 +9,10 @@ This is the backend the FinSight frontend (`artifacts/finsight`) talks to via
 its own Next.js API routes, which proxy requests here server-to-server (see
 `artifacts/finsight/src/lib/ragApiClient.ts`). This service has no
 per-user auth and no CORS configuration, since it's never called directly
-from a browser - it's designed to sit behind network isolation (an internal
-ALB, see `infra/rag_api_stack.py` and `DEPLOYMENT.md`), reinforced by a
-shared-secret `X-Internal-Api-Key` header required on every route except
-`/healthz` (see `rag_api/auth.py`).
+from a browser. Its ALB is public (fronted by a CloudFront distribution,
+see `infra/rag_api_stack.py` and `DEPLOYMENT.md`), so the primary access
+control is a shared-secret `X-Internal-Api-Key` header required on every
+route except `/healthz` (see `rag_api/auth.py`).
 
 ## Endpoints
 
@@ -101,7 +101,7 @@ services/rag-api/
   rag_api/
     main.py               FastAPI() app, route registration
     config.py              RagApiSettings (ANTHROPIC_API_KEY, INTERNAL_API_KEY, upload limits)
-    auth.py                 X-Internal-Api-Key shared-secret dependency (defense-in-depth)
+    auth.py                 X-Internal-Api-Key shared-secret dependency (primary access control)
     schemas.py              Pydantic request/response models (camelCase DocumentOut)
     status_mapping.py        rag_pipeline status/filename -> frontend DocumentOut mapping
     anthropic_client.py       Claude prompt construction + answer synthesis
