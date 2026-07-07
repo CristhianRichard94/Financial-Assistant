@@ -72,13 +72,18 @@ describe("AppLayout", () => {
     // Overlay is not rendered until opened.
     expect(container.querySelector(".fixed.inset-0")).not.toBeInTheDocument();
 
-    const openButton = screen.getAllByRole("button")[0];
-    await user.click(openButton);
+    // Selected by icon rather than DOM position: the desktop sidebar's
+    // (CSS-hidden but still DOM-present) theme toggle button precedes the
+    // mobile header's hamburger button in render order.
+    const openButton = screen.getAllByRole("button").find((btn) =>
+      btn.querySelector("svg.lucide-menu")
+    );
+    expect(openButton).toBeDefined();
+    await user.click(openButton!);
 
     expect(container.querySelector(".fixed.inset-0")).toBeInTheDocument();
 
-    // The mobile sidebar's close (X) button is the second button rendered
-    // once the overlay is open (first is the header's hamburger button).
+    // The mobile sidebar's close (X) button, once the overlay is open.
     const closeButton = screen.getAllByRole("button").find((btn) =>
       btn.querySelector("svg.lucide-x")
     );
