@@ -17,11 +17,13 @@ from typing import Any
 
 import aws_cdk as cdk
 from aws_cdk import Stack
-from aws_cdk import aws_certificatemanager as acm
+from aws_cdk import aws_cloudfront as cloudfront
+from aws_cdk import aws_cloudfront_origins as origins
+from aws_cdk import aws_ec2 as ec2
 from aws_cdk import aws_ecs as ecs
 from aws_cdk import aws_ecs_patterns as ecs_patterns
-from aws_cdk import aws_elasticloadbalancingv2 as elbv2
 from aws_cdk import aws_secretsmanager as secretsmanager
+from aws_cdk import custom_resources as cr
 from constructs import Construct
 
 # This file lives at services/rag-api/infra/rag_api_stack.py, so the repo
@@ -36,10 +38,12 @@ DOCKERFILE_RELATIVE_PATH = "services/rag-api/Dockerfile"
 # `ecs.Secret.from_secrets_manager(secret)` with no `field=` argument.
 #
 # INTERNAL_API_KEY is a pre-shared secret the frontend must send back as the
-# `X-Internal-Api-Key` header on every request (see rag_api/auth.py). Since
-# the ALB is public (see the comment on `public_load_balancer` below), this
-# header check is the *primary* access control for this service, not just
-# defense-in-depth - there is no network boundary backing it up.
+# `X-Internal-Api-Key` header on every request (see rag_api/auth.py). The
+# public entry point into this service is the CloudFront distribution below,
+# which forwards that header straight through - CloudFront and the ALB's
+# security-group lockdown to CloudFront-only traffic (see below) are only a
+# network-layer speed bump, not real access control, so this header check
+# remains the *primary* access control for this service.
 SECRET_NAMES: dict[str, str] = {
     "SUPABASE_URL": "finsight/rag-api/SUPABASE_URL",
     "SUPABASE_SERVICE_KEY": "finsight/rag-api/SUPABASE_SERVICE_KEY",
@@ -64,56 +68,29 @@ class RagApiStack(Stack):
             for env_var_name, secret_name in SECRET_NAMES.items()
         }
 
-        # ACM certificate for the ALB's HTTPS listener. This must be a
-        # certificate the caller already owns and has DNS-validated for their
-        # own custom domain (e.g. rag-api.yourdomain.com) - AWS controls the
-        # `*.elb.amazonaws.com` hostname it assigns the ALB, so it's not
-        # possible to get a valid public certificate for that raw hostname.
-        # Passed in via CDK context (`cdk deploy -c certificateArn=...`)
-        # rather than hardcoded, since it's account/domain-specific and
-        # created out-of-band - see ../DEPLOYMENT.md for how to request and
-        # validate one.
-        certificate_arn = self.node.try_get_context("certificateArn")
-        if not certificate_arn:
-            raise ValueError(
-                "Missing required CDK context value 'certificateArn'. Pass "
-                "it with `cdk deploy -c certificateArn=<your ACM certificate "
-                "ARN>` (and likewise for `cdk synth`). See the 'Bootstrap "
-                "and deploy' section of ../DEPLOYMENT.md for how to request "
-                "and validate a certificate for your own domain first."
-            )
-        certificate = acm.Certificate.from_certificate_arn(
-            self, "RagApiCertificate", certificate_arn
-        )
-
         service = ecs_patterns.ApplicationLoadBalancedFargateService(
             self,
             "RagApiService",
             cpu=512,
             memory_limit_mib=1024,
             desired_count=1,
-            # Public, HTTPS-only ALB: the frontend (Next.js/Express) is
+            # Public, HTTP-only ALB: the frontend (Next.js/Express) is
             # deployed on Replit's autoscale platform, a separate cloud with
             # no private network path into this AWS VPC, so an internal ALB
             # is not reachable from it. `public_load_balancer=True` attaches
-            # the ALB to an internet gateway.
+            # the ALB to an internet gateway so the CloudFront distribution
+            # below (and, in principle, anything else) can reach it.
             #
-            # This service has no other user-facing authentication of its
-            # own, so with the network boundary gone, the `X-Internal-Api-Key`
-            # shared-secret header check (see rag_api/auth.py) is now the
-            # *primary* access control, not defense-in-depth. Treat that
-            # secret like a real credential: generate it as a long random
-            # value (see ../DEPLOYMENT.md) and rotate it immediately if it's
-            # ever suspected of leaking.
-            #
-            # `protocol=HTTPS` + `certificate=...` add an HTTPS listener on
-            # 443, and `redirect_http=True` adds a listener on 80 that only
-            # issues a 301 redirect to the HTTPS listener - so there is no
-            # plaintext-HTTP path to reach the API, only a redirect off of it.
+            # This ALB deliberately has no HTTPS listener of its own - TLS is
+            # terminated at CloudFront instead, using CloudFront's free
+            # default `*.cloudfront.net` domain and AWS-managed certificate,
+            # which avoids requiring the caller to own a domain just to get
+            # an ACM certificate issued. The ALB's security group is locked
+            # down below so it only accepts plaintext HTTP from CloudFront's
+            # own IP ranges, not the open internet, so this is not a
+            # plaintext-over-the-internet path even though the listener
+            # itself is HTTP.
             public_load_balancer=True,
-            protocol=elbv2.ApplicationProtocol.HTTPS,
-            certificate=certificate,
-            redirect_http=True,
             task_image_options=ecs_patterns.ApplicationLoadBalancedTaskImageOptions(
                 image=ecs.ContainerImage.from_asset(
                     str(REPO_ROOT),
@@ -149,19 +126,122 @@ class RagApiStack(Stack):
             healthy_http_codes="200",
         )
 
+        # Lock the ALB's security group down to only accept inbound traffic
+        # from CloudFront's own edge locations, identified by the
+        # AWS-managed `com.amazonaws.global.cloudfront.origin-facing` prefix
+        # list. Without this, `public_load_balancer=True` above would leave
+        # port 80 open to 0.0.0.0/0, and anyone who discovered the ALB's own
+        # `*.elb.amazonaws.com` DNS name could bypass CloudFront entirely and
+        # hit the ALB directly in plaintext HTTP.
+        #
+        # The prefix list's ID is AWS-managed and differs per region/
+        # partition (there is no single hardcoded ID that works everywhere -
+        # e.g. it's pl-3b927c52 in us-east-1 but pl-5da64334 in sa-east-1),
+        # so it must be looked up rather than hardcoded. `ec2.PrefixList.
+        # from_lookup` (a synth-time CDK context lookup) would be the
+        # simplest way to do that, but it's implemented via the CloudFormation
+        # Cloud Control API (`cloudformation:ListResources`), which is a
+        # broader/less commonly granted permission than plain EC2 read access
+        # and may not be available to every deploying principal. Instead,
+        # this uses an `AwsCustomResource` that calls the classic
+        # `ec2:DescribeManagedPrefixLists` API directly, at CloudFormation
+        # deploy time, via a CDK-managed Lambda scoped to exactly that one
+        # read-only permission - no extra synth-time AWS credentials or IAM
+        # grants are required locally, and the actual account/region lookup
+        # happens automatically wherever this stack is deployed.
+        prefix_list_lookup = cr.AwsCustomResource(
+            self,
+            "CloudFrontOriginFacingPrefixListLookup",
+            on_update=cr.AwsSdkCall(
+                service="EC2",
+                action="describeManagedPrefixLists",
+                parameters={
+                    "Filters": [
+                        {
+                            "Name": "prefix-list-name",
+                            "Values": ["com.amazonaws.global.cloudfront.origin-facing"],
+                        }
+                    ]
+                },
+                # Re-run on every deployment (rather than only on the first
+                # create) so this stays correct if AWS ever changes the
+                # prefix list ID for this account/region; the underlying API
+                # call is read-only and cheap.
+                physical_resource_id=cr.PhysicalResourceId.of(
+                    "CloudFrontOriginFacingPrefixListLookup"
+                ),
+            ),
+            policy=cr.AwsCustomResourcePolicy.from_sdk_calls(
+                resources=cr.AwsCustomResourcePolicy.ANY_RESOURCE,
+            ),
+        )
+        cloudfront_prefix_list_id = prefix_list_lookup.get_response_field(
+            "PrefixLists.0.PrefixListId"
+        )
+        service.load_balancer.connections.allow_from(
+            ec2.Peer.prefix_list(cloudfront_prefix_list_id),
+            ec2.Port.tcp(80),
+            "Allow inbound HTTP only from CloudFront's origin-facing IP ranges",
+        )
+
+        # CloudFront distribution in front of the ALB. This is what makes
+        # the service reachable over HTTPS without requiring the caller to
+        # own a domain or provision an ACM certificate: CloudFront's default
+        # `*.cloudfront.net` domain comes with a working AWS-managed
+        # certificate out of the box. TLS is terminated here, then
+        # CloudFront talks to the ALB over plain HTTP (the ALB has no HTTPS
+        # listener - see the comment above).
+        distribution = cloudfront.Distribution(
+            self,
+            "RagApiDistribution",
+            default_behavior=cloudfront.BehaviorOptions(
+                origin=origins.LoadBalancerV2Origin(
+                    service.load_balancer,
+                    protocol_policy=cloudfront.OriginProtocolPolicy.HTTP_ONLY,
+                ),
+                viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+                # This is a dynamic API (RAG chat/document ingestion), not
+                # static content - every response is per-request and must
+                # never be served from cache to a different caller.
+                cache_policy=cloudfront.CachePolicy.CACHING_DISABLED,
+                # CloudFront does not forward arbitrary request headers to
+                # the origin by default, which would silently strip the
+                # `X-Internal-Api-Key` header this service's sole
+                # access-control check depends on (see rag_api/auth.py).
+                # `ALL_VIEWER` forwards all headers, query strings, and
+                # cookies through untouched, which is the simplest way to
+                # guarantee that header (and anything else the app may rely
+                # on, e.g. Content-Type on file uploads) reaches the origin.
+                origin_request_policy=cloudfront.OriginRequestPolicy.ALL_VIEWER,
+                # The API uses GET (query/list documents), POST (chat query,
+                # upload), and DELETE (remove document) - CloudFront's
+                # default behavior only allows GET/HEAD, so every other verb
+                # must be explicitly allowed through or CloudFront rejects
+                # them before they ever reach the ALB.
+                allowed_methods=cloudfront.AllowedMethods.ALLOW_ALL,
+            ),
+        )
+
         cdk.CfnOutput(
             self,
             "LoadBalancerDnsName",
             value=service.load_balancer.load_balancer_dns_name,
             description=(
-                "Public ALB DNS name. This raw value is NOT directly usable "
-                "as RAG_API_BASE_URL - there is no valid certificate for the "
-                "*.elb.amazonaws.com hostname AWS assigns it, so HTTPS "
-                "requests to it directly will fail certificate validation. "
-                "Instead, point your own custom domain (the one the ACM "
-                "certificate passed via -c certificateArn was issued for, "
-                "e.g. rag-api.yourdomain.com) at this value with a DNS "
-                "CNAME/ALIAS record, then use https://<your custom domain> "
-                "as RAG_API_BASE_URL - see DEPLOYMENT.md."
+                "Public ALB DNS name, for reference/debugging only. Its "
+                "security group only accepts inbound traffic from "
+                "CloudFront's IP ranges, and it has no HTTPS listener, so "
+                "this value is NOT usable directly as RAG_API_BASE_URL. Use "
+                "the DistributionDomainName output instead."
+            ),
+        )
+
+        cdk.CfnOutput(
+            self,
+            "DistributionDomainName",
+            value=distribution.distribution_domain_name,
+            description=(
+                "CloudFront distribution domain name. Use "
+                "https://<this value> as RAG_API_BASE_URL in the frontend's "
+                "environment configuration - see DEPLOYMENT.md."
             ),
         )
