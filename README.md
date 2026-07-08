@@ -62,9 +62,8 @@ See [`replit.md`](./replit.md) for the day-to-day architecture-decisions log kep
 ├── lib/
 │   ├── db/                 Drizzle schema/client (@workspace/db)
 │   ├── api-spec/           OpenAPI spec + orval codegen config
-│   ├── api-zod/            Generated Zod schemas (@workspace/api-zod)
-│   └── api-client-react/   Generated React Query client hooks
-├── scripts/                Misc workspace-level scripts (tsx)
+│   └── api-zod/            Generated Zod schemas (@workspace/api-zod)
+├── scripts/                post-merge.sh (Replit post-merge hook, see .replit)
 ├── services/
 │   ├── rag-pipeline/       Python: parse → chunk → embed → store → search (Supabase/pgvector)
 │   └── rag-api/            Python: FastAPI wrapper over rag-pipeline + Claude synthesis, AWS CDK deploy artifacts
