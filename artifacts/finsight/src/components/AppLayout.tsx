@@ -105,7 +105,7 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
 
       <nav className="flex-1 px-3 py-4 space-y-1">
         {navItems.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || pathname.startsWith(href + "/");
+          const active = pathname === href || pathname?.startsWith(href + "/");
           return (
             <Link
               key={href}
