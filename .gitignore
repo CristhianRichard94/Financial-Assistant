@@ -48,3 +48,12 @@ Thumbs.db
 .cache/
 .local/
 __pycache__/
+
+# Environment files with local/live secrets - never commit these.
+# (services/rag-api and services/rag-pipeline also have their own .gitignore
+# with the same rule, kept for when those packages are used standalone.)
+.env
+.env.local
+.env.*.local
+artifacts/finsight/.next
+.venv
