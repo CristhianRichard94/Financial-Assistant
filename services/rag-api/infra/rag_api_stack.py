@@ -189,7 +189,7 @@ class RagApiStack(Stack):
         service.load_balancer.connections.allow_from(
             ec2.Peer.prefix_list(cloudfront_prefix_list_id),
             ec2.Port.tcp(80),
-            "Allow inbound HTTP only from CloudFront's origin-facing IP ranges",
+            "Allow inbound HTTP only from CloudFront origin-facing IP ranges",
         )
 
         # CloudFront distribution in front of the ALB. This is what makes

@@ -24,11 +24,16 @@ WORKDIR /app
 COPY services/rag-pipeline /app/services/rag-pipeline
 COPY services/rag-api /app/services/rag-api
 
-# Install both packages (non-dev extras only) with pip directly - no
-# editable installs in the image, this is a real deployment artifact.
-RUN pip install --no-cache-dir \
-    /app/services/rag-pipeline \
-    /app/services/rag-api
+# Install rag-api only (non-dev extras, no editable installs - this is a
+# real deployment artifact). rag-api's own dependency on rag-pipeline (a
+# `{root:uri}`-relative direct reference, see rag-api/pyproject.toml) pulls
+# rag-pipeline in transitively. Do NOT also pass /app/services/rag-pipeline
+# here: pip's resolver sees that plain positional path and the direct-URL
+# reference from rag-api as two different sources for the same package
+# (their path strings differ literally even though they resolve to the same
+# directory) and refuses to reconcile them, aborting with a spurious
+# "conflicting dependencies" error.
+RUN pip install --no-cache-dir /app/services/rag-api
 
 WORKDIR /app/services/rag-api
 
