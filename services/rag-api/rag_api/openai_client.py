@@ -1,13 +1,13 @@
-"""Claude-based answer synthesis over retrieved RAG chunks.
+"""OpenAI-based answer synthesis over retrieved RAG chunks.
 
 This is a simple RAG-QA synthesis step (summarize/cite from a handful of
 already-retrieved text chunks), not a complex multi-step reasoning task, so
-no `thinking` parameter is used here.
+no extended-reasoning/effort parameter is used here.
 """
 
 from __future__ import annotations
 
-from anthropic import Anthropic
+from openai import OpenAI
 from rag_pipeline.search import SearchResult
 
 from rag_api.config import RagApiSettings
@@ -36,17 +36,26 @@ SYSTEM_PROMPT = (
 )
 
 
-class ClaudeRefusalError(RuntimeError):
-    """Raised when Claude refuses to answer (stop_reason == 'refusal')."""
+class AnswerRefusalError(RuntimeError):
+    """Raised when the model refuses to answer (finish_reason == 'content_filter').
+
+    OpenAI's chat completions API has no direct equivalent of Anthropic's
+    explicit `stop_reason == "refusal"` field. `finish_reason == "content_filter"`
+    (the completion was withheld/flagged by OpenAI's own content filter) is the
+    closest analogue, so that's what's treated as a refusal here. An ordinary
+    "the excerpts don't contain the answer" reply is not a refusal - it's a
+    normal `finish_reason == "stop"` response and is already handled by the
+    SYSTEM_PROMPT's "say so explicitly" rule.
+    """
 
 
-_client: Anthropic | None = None
+_client: OpenAI | None = None
 
 
-def get_client(api_key: str) -> Anthropic:
+def get_client(api_key: str) -> OpenAI:
     global _client
     if _client is None:
-        _client = Anthropic(api_key=api_key)
+        _client = OpenAI(api_key=api_key)
     return _client
 
 
@@ -88,35 +97,38 @@ def build_prompt(question: str, results: list[SearchResult]) -> str:
     )
 
 
-def ask_claude(
+def ask_openai(
     question: str,
     results: list[SearchResult],
     settings: RagApiSettings,
 ) -> tuple[str, list[SourceOut]]:
-    """Ask Claude to synthesize an answer from the retrieved chunks.
+    """Ask OpenAI to synthesize an answer from the retrieved chunks.
 
     Returns (answer_text, sources), where sources are the unique
     filename/similarity pairs from `results` (in their original ranked order).
 
-    Raises ClaudeRefusalError if Claude declines to answer
-    (response.stop_reason == "refusal").
+    Raises AnswerRefusalError if the model's response is withheld by OpenAI's
+    content filter (finish_reason == "content_filter").
     """
-    client = get_client(settings.anthropic_api_key)
+    client = get_client(settings.openai_api_key)
     prompt = build_prompt(question, results)
 
-    response = client.messages.create(
-        model=settings.anthropic_model,
-        max_tokens=MAX_TOKENS,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
+    response = client.chat.completions.create(
+        model=settings.openai_chat_model,
+        max_completion_tokens=MAX_TOKENS,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
     )
 
-    if response.stop_reason == "refusal":
-        raise ClaudeRefusalError(
-            "Claude declined to answer this question based on the retrieved documents."
+    choice = response.choices[0]
+    if choice.finish_reason == "content_filter":
+        raise AnswerRefusalError(
+            "The model declined to answer this question based on the retrieved documents."
         )
 
-    answer = response.content[0].text
+    answer = choice.message.content
 
     sources = [
         SourceOut(filename=result.filename, similarity=result.similarity)

@@ -2,8 +2,16 @@
 
 Reuses `rag_pipeline`'s own `Settings`/`load_settings()` for the Supabase and
 OpenAI credentials (this service always builds them at request-handling
-time via `rag_pipeline`), and adds the Anthropic-specific configuration on
-top of that.
+time via `rag_pipeline`), and adds the internal-auth and answer-synthesis
+configuration on top of that.
+
+Note: `OPENAI_API_KEY` is read independently here (via `_require_env`, same
+env var name `rag_pipeline.config.load_settings()` reads) rather than by
+importing `rag_pipeline`'s `Settings`, so this module has no import-time
+dependency on `rag_pipeline` and stays a plain, self-contained settings
+loader - `rag_pipeline.load_settings()` is still the source of truth for
+Supabase/embeddings configuration, invoked separately wherever the pipeline
+itself is called.
 """
 
 from __future__ import annotations
@@ -15,10 +23,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# The Claude model used to synthesize answers from retrieved chunks. This is
-# a fixed constant, not env-configurable, so all deployments of this service
-# behave consistently.
-ANTHROPIC_MODEL = "claude-opus-4-8"
+# The OpenAI chat model used to synthesize answers from retrieved chunks.
+# This is a fixed constant, not env-configurable, so all deployments of this
+# service behave consistently. Distinct from rag_pipeline's EMBEDDING_MODEL
+# (text-embedding-3-small), which is a separate model used for a separate
+# purpose (embeddings, not chat completions).
+OPENAI_CHAT_MODEL = "gpt-5"
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB, matches the frontend's own limit.
 
@@ -31,9 +41,9 @@ class MissingEnvironmentVariable(RuntimeError):
 
 @dataclass(frozen=True)
 class RagApiSettings:
-    anthropic_api_key: str
+    openai_api_key: str
     internal_api_key: str
-    anthropic_model: str = ANTHROPIC_MODEL
+    openai_chat_model: str = OPENAI_CHAT_MODEL
     max_upload_bytes: int = MAX_UPLOAD_BYTES
     allowed_extensions: frozenset[str] = frozenset(ALLOWED_EXTENSIONS)
 
@@ -50,15 +60,15 @@ def _require_env(name: str) -> str:
 
 
 def load_rag_api_settings() -> RagApiSettings:
-    """Load and validate the Anthropic-specific and internal-auth configuration.
+    """Load and validate the OpenAI-specific and internal-auth configuration.
 
     Raises MissingEnvironmentVariable with a human-readable message if
-    ANTHROPIC_API_KEY or INTERNAL_API_KEY is absent. Supabase/OpenAI
-    credentials are validated separately by
-    `rag_pipeline.config.load_settings()` wherever the pipeline is actually
-    invoked.
+    OPENAI_API_KEY or INTERNAL_API_KEY is absent. Supabase credentials are
+    validated separately by `rag_pipeline.config.load_settings()` wherever
+    the pipeline is actually invoked (it re-reads the same OPENAI_API_KEY
+    env var for embeddings).
     """
     return RagApiSettings(
-        anthropic_api_key=_require_env("ANTHROPIC_API_KEY"),
+        openai_api_key=_require_env("OPENAI_API_KEY"),
         internal_api_key=_require_env("INTERNAL_API_KEY"),
     )

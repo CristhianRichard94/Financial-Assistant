@@ -183,7 +183,7 @@ class _FakeBodyStream:
 
 def _make_settings(max_upload_bytes: int = 10 * 1024 * 1024) -> RagApiSettings:
     return RagApiSettings(
-        anthropic_api_key="sk-ant-test",
+        openai_api_key="sk-test",
         internal_api_key="test-internal-api-key",
         max_upload_bytes=max_upload_bytes,
     )

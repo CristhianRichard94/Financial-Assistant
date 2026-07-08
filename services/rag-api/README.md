@@ -2,8 +2,8 @@
 
 A FastAPI HTTP service that exposes the [`rag-pipeline`](../rag-pipeline)
 library over HTTP: document upload/listing/deletion, and a `/query` endpoint
-that retrieves relevant chunks and asks Claude (Anthropic) to synthesize an
-answer from them.
+that retrieves relevant chunks and asks OpenAI to synthesize an answer from
+them.
 
 This is the backend the FinSight frontend (`artifacts/finsight`) talks to via
 its own Next.js API routes, which proxy requests here server-to-server (see
@@ -22,7 +22,7 @@ route except `/healthz` (see `rag_api/auth.py`).
 | `GET` | `/documents` | List all documents |
 | `POST` | `/upload` | Upload a file (`multipart/form-data`, field `file`); ingestion runs in the background |
 | `DELETE` | `/documents/{document_id}` | Delete a document and its chunks |
-| `POST` | `/query` | Ask a question; retrieves relevant chunks and asks Claude for an answer |
+| `POST` | `/query` | Ask a question; retrieves relevant chunks and asks OpenAI for an answer |
 
 ## Local development
 
@@ -48,8 +48,7 @@ cp .env.example .env
 | --- | --- |
 | `SUPABASE_URL` | Supabase dashboard -> Project Settings -> API (same project rag-pipeline uses) |
 | `SUPABASE_SERVICE_KEY` | Supabase dashboard -> Project Settings -> API -> `service_role` secret key |
-| `OPENAI_API_KEY` | https://platform.openai.com/api-keys |
-| `ANTHROPIC_API_KEY` | https://console.anthropic.com/settings/keys |
+| `OPENAI_API_KEY` | https://platform.openai.com/api-keys (used for both embeddings and answer synthesis) |
 | `INTERNAL_API_KEY` | Any long random string you generate yourself, e.g. `openssl rand -hex 32` - must match `RAG_API_INTERNAL_KEY` in the frontend's own environment |
 
 ### 3. Run the API
@@ -81,7 +80,7 @@ pip install -e ../rag-pipeline -e ".[dev]"
 pytest
 ```
 
-All tests mock `rag_pipeline` calls and the Anthropic client, so no live
+All tests mock `rag_pipeline` calls and the OpenAI client, so no live
 credentials or network access are needed.
 
 ## Docker
@@ -100,16 +99,16 @@ docker run --rm -p 8000:8000 --env-file services/rag-api/.env rag-api
 services/rag-api/
   rag_api/
     main.py               FastAPI() app, route registration
-    config.py              RagApiSettings (ANTHROPIC_API_KEY, INTERNAL_API_KEY, upload limits)
+    config.py              RagApiSettings (OPENAI_API_KEY, INTERNAL_API_KEY, upload limits)
     auth.py                 X-Internal-Api-Key shared-secret dependency (primary access control)
     schemas.py              Pydantic request/response models (camelCase DocumentOut)
     status_mapping.py        rag_pipeline status/filename -> frontend DocumentOut mapping
-    anthropic_client.py       Claude prompt construction + answer synthesis
+    openai_client.py          OpenAI prompt construction + answer synthesis
     routes/
       health.py               GET /healthz
       documents.py             GET /documents, POST /upload, DELETE /documents/{id}
       query.py                  POST /query
-  tests/                    pytest + FastAPI TestClient, all pipeline/Anthropic calls mocked
+  tests/                    pytest + FastAPI TestClient, all pipeline/OpenAI calls mocked
   infra/                    AWS CDK (Python) app - ECS Fargate + ALB
   Dockerfile
   DEPLOYMENT.md             Manual AWS deployment steps
@@ -117,9 +116,9 @@ services/rag-api/
 
 ## Known limitations / things to verify with real credentials
 
-- No endpoint here has been exercised against live Supabase, OpenAI, or
-  Anthropic credentials in this environment - only unit/route tests with
-  mocked dependencies have been run.
+- No endpoint here has been exercised against live Supabase or OpenAI
+  credentials in this environment - only unit/route tests with mocked
+  dependencies have been run.
 - `/upload` ingests in a FastAPI `BackgroundTasks` callback, which runs
   in-process after the response is sent. This is fine for a single-instance
   ECS Fargate task, but note that BackgroundTasks are not persisted or

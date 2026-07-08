@@ -1,8 +1,8 @@
 """Shared fixtures for rag_api route tests.
 
-All rag_pipeline/anthropic calls are mocked at the point of use in the route
-modules, so these tests never need real Supabase/OpenAI/Anthropic
-credentials or network access.
+All rag_pipeline/OpenAI calls are mocked at the point of use in the route
+modules, so these tests never need real Supabase/OpenAI credentials or
+network access.
 """
 
 from __future__ import annotations
@@ -17,9 +17,9 @@ TEST_INTERNAL_API_KEY = "test-internal-api-key"
 
 @pytest.fixture(autouse=True)
 def rag_api_settings_env(monkeypatch):
-    """RagApiSettings requires ANTHROPIC_API_KEY and INTERNAL_API_KEY; give
+    """RagApiSettings requires OPENAI_API_KEY and INTERNAL_API_KEY; give
     every test fake values for both."""
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key")
     monkeypatch.setenv("INTERNAL_API_KEY", TEST_INTERNAL_API_KEY)
 
 

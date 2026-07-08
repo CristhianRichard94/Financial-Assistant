@@ -21,7 +21,7 @@ def _make_result(**overrides):
 def test_query_returns_answer_and_sources(client, mocker):
     mocker.patch("rag_pipeline.search", return_value=[_make_result()])
     mocker.patch(
-        "rag_api.anthropic_client.ask_claude",
+        "rag_api.openai_client.ask_openai",
         return_value=(
             "You spent $50 on groceries, according to statement.pdf.",
             [SourceOut(filename="statement.pdf", similarity=0.87)],
@@ -73,10 +73,10 @@ def test_query_502_does_not_leak_raw_exception_text(client, mocker):
     assert "postgres://user:pass@host/db" not in detail
 
 
-def test_query_returns_502_on_claude_error(client, mocker):
+def test_query_returns_502_on_openai_answer_error(client, mocker):
     mocker.patch("rag_pipeline.search", return_value=[_make_result()])
     mocker.patch(
-        "rag_api.anthropic_client.ask_claude", side_effect=RuntimeError("anthropic down")
+        "rag_api.openai_client.ask_openai", side_effect=RuntimeError("openai down")
     )
 
     response = client.post("/query", json={"question": "What did I spend?"})

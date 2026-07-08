@@ -14,7 +14,8 @@ are available there) - verify each step against your own account.
 - Docker installed locally.
 - Node.js (for the `aws-cdk` CLI) and Python 3.10+.
 - A Supabase project with the `services/rag-pipeline/sql/*.sql` migrations
-  already applied, an OpenAI API key, and an Anthropic API key.
+  already applied, and an OpenAI API key (used for both embeddings and
+  answer synthesis).
 
 ## 1. Build and push the container image to ECR
 
@@ -39,7 +40,7 @@ this manual ECR push is only needed if you want to build/push the image
 independently of CDK (e.g. to test it locally with `docker run` first, or to
 push from a CI pipeline that doesn't run CDK).
 
-## 2. Create the 5 required secrets in Secrets Manager
+## 2. Create the 4 required secrets in Secrets Manager
 
 The CDK stack expects these exact secret names (see `SECRET_NAMES` in
 `infra/rag_api_stack.py`), each holding a single plaintext string value (not
@@ -57,10 +58,6 @@ aws secretsmanager create-secret \
 aws secretsmanager create-secret \
   --name finsight/rag-api/OPENAI_API_KEY \
   --secret-string "sk-your-openai-api-key"
-
-aws secretsmanager create-secret \
-  --name finsight/rag-api/ANTHROPIC_API_KEY \
-  --secret-string "sk-ant-your-anthropic-api-key"
 
 # A pre-shared secret the frontend must send back on every request as the
 # X-Internal-Api-Key header (see rag_api/auth.py). Generate a long random

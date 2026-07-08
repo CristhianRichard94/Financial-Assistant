@@ -1,4 +1,4 @@
-"""Question-answering route: retrieve relevant chunks, then ask Claude.
+"""Question-answering route: retrieve relevant chunks, then ask OpenAI.
 
 Uses `rag_pipeline.search(...)` (module-qualified attribute access) so tests
 can patch `rag_pipeline.search` directly.
@@ -11,7 +11,7 @@ import logging
 import rag_pipeline
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from rag_api import anthropic_client
+from rag_api import openai_client
 from rag_api.auth import require_internal_api_key
 from rag_api.config import load_rag_api_settings
 from rag_api.schemas import QueryRequest, QueryResponse
@@ -27,7 +27,7 @@ def query(request: QueryRequest) -> QueryResponse:
 
     try:
         results = rag_pipeline.search(request.question, k=5)
-        answer, sources = anthropic_client.ask_claude(request.question, results, settings)
+        answer, sources = openai_client.ask_openai(request.question, results, settings)
     except Exception:
         logger.exception("Failed to answer query")
         raise HTTPException(
