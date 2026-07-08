@@ -91,6 +91,15 @@ class RagApiStack(Stack):
             # plaintext-over-the-internet path even though the listener
             # itself is HTTP.
             public_load_balancer=True,
+            # Without this, CDK's `ApplicationLoadBalancedFargateService`
+            # auto-creates an inline ingress rule opening port 80 to
+            # 0.0.0.0/0 on the ALB's security group *in addition to* the
+            # CloudFront-only rule added below via `connections.allow_from`
+            # - `allow_from` only ever adds rules, it never removes CDK's
+            # default one. Setting `open_listener=False` suppresses that
+            # default rule so the CloudFront-only rule added below is the
+            # *only* ingress rule on the ALB's security group.
+            open_listener=False,
             task_image_options=ecs_patterns.ApplicationLoadBalancedTaskImageOptions(
                 image=ecs.ContainerImage.from_asset(
                     str(REPO_ROOT),

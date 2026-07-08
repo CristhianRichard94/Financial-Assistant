@@ -40,6 +40,43 @@ describe("ragApiClient env var validation", () => {
 
     await expect(listDocuments()).rejects.toThrow(/RAG_API_INTERNAL_KEY is not set/);
   });
+
+  it("throws when RAG_API_BASE_URL is a non-local HTTP host", async () => {
+    vi.stubEnv("RAG_API_BASE_URL", "http://example.com");
+    vi.stubEnv("RAG_API_INTERNAL_KEY", INTERNAL_KEY);
+
+    await expect(listDocuments()).rejects.toThrow(/must use HTTPS/);
+  });
+
+  it("accepts an https:// RAG_API_BASE_URL", async () => {
+    vi.stubEnv("RAG_API_BASE_URL", "https://rag-api.example.cloudfront.net");
+    vi.stubEnv("RAG_API_INTERNAL_KEY", INTERNAL_KEY);
+    const fetchMock = mockFetchOnce({ ok: true, json: async () => [] });
+
+    await expect(listDocuments()).resolves.toEqual([]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://rag-api.example.cloudfront.net/documents",
+      expect.anything()
+    );
+  });
+
+  it("accepts an http://localhost RAG_API_BASE_URL", async () => {
+    vi.stubEnv("RAG_API_BASE_URL", "http://localhost:8000");
+    vi.stubEnv("RAG_API_INTERNAL_KEY", INTERNAL_KEY);
+    const fetchMock = mockFetchOnce({ ok: true, json: async () => [] });
+
+    await expect(listDocuments()).resolves.toEqual([]);
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/documents", expect.anything());
+  });
+
+  it("accepts an http://127.0.0.1 RAG_API_BASE_URL", async () => {
+    vi.stubEnv("RAG_API_BASE_URL", "http://127.0.0.1:8000");
+    vi.stubEnv("RAG_API_INTERNAL_KEY", INTERNAL_KEY);
+    const fetchMock = mockFetchOnce({ ok: true, json: async () => [] });
+
+    await expect(listDocuments()).resolves.toEqual([]);
+    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8000/documents", expect.anything());
+  });
 });
 
 describe("ragApiClient requests", () => {
