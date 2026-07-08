@@ -48,7 +48,6 @@ SECRET_NAMES: dict[str, str] = {
     "SUPABASE_URL": "finsight/rag-api/SUPABASE_URL",
     "SUPABASE_SERVICE_KEY": "finsight/rag-api/SUPABASE_SERVICE_KEY",
     "OPENAI_API_KEY": "finsight/rag-api/OPENAI_API_KEY",
-    "ANTHROPIC_API_KEY": "finsight/rag-api/ANTHROPIC_API_KEY",
     "INTERNAL_API_KEY": "finsight/rag-api/INTERNAL_API_KEY",
 }
 
@@ -57,7 +56,7 @@ class RagApiStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs: Any) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # Pull all 5 required secrets from Secrets Manager - never plaintext
+        # Pull all 4 required secrets from Secrets Manager - never plaintext
         # environment variables for credentials.
         ecs_secrets = {
             env_var_name: ecs.Secret.from_secrets_manager(

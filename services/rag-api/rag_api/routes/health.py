@@ -1,8 +1,7 @@
 """Liveness/readiness endpoint for the ALB health check.
 
 Deliberately has no auth and checks no downstream dependencies (Supabase,
-OpenAI, Anthropic) - it only needs to prove the process is up and serving
-requests.
+OpenAI) - it only needs to prove the process is up and serving requests.
 """
 
 from __future__ import annotations

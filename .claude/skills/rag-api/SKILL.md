@@ -33,9 +33,10 @@ cp services/rag-api/.env.example services/rag-api/.env   # fill in real values
 uvicorn rag_api.main:app --reload --port 8000 --app-dir services/rag-api
 ```
 
-Required env vars: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `OPENAI_API_KEY`,
-`ANTHROPIC_API_KEY`, `INTERNAL_API_KEY` (shared secret checked via
-`X-Internal-Api-Key` on every route except `/healthz` — see `rag_api/auth.py`).
+Required env vars: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `OPENAI_API_KEY`
+(used for both embeddings and chat answer synthesis), `INTERNAL_API_KEY`
+(shared secret checked via `X-Internal-Api-Key` on every route except
+`/healthz` — see `rag_api/auth.py`).
 
 Point the frontend at it via `artifacts/finsight/.env.local`:
 `RAG_API_BASE_URL=http://localhost:8000`, `RAG_API_INTERNAL_KEY=<same value>`.
@@ -47,9 +48,9 @@ Point the frontend at it via `artifacts/finsight/.env.local`:
 (cd services/rag-pipeline && pytest)
 ```
 
-All tests mock Supabase/OpenAI/Anthropic — no live credentials or network
-needed. Nothing in this repo has been run against real credentials; treat any
-claim of "verified end-to-end" for this service with suspicion unless it says
+All tests mock Supabase/OpenAI — no live credentials or network needed.
+Nothing in this repo has been run against real credentials; treat any claim
+of "verified end-to-end" for this service with suspicion unless it says
 which real API keys were used.
 
 ## Docker
@@ -68,7 +69,7 @@ been applied — no AWS credentials in this environment. Chosen over Lambda
 because `/upload` ingestion runs in a `BackgroundTasks` callback after the
 response is sent, which needs a long-lived process (Lambda freezes execution
 right after the response returns). Full manual steps are in
-`services/rag-api/DEPLOYMENT.md` — ECR push, Secrets Manager for the 4 API
+`services/rag-api/DEPLOYMENT.md` — ECR push, Secrets Manager for the 3 API
 keys, `cdk bootstrap && cdk deploy`. `cdk synth` can be run without live AWS
 credentials to sanity-check the CloudFormation template:
 

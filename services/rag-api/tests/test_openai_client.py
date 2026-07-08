@@ -1,10 +1,10 @@
-"""Tests for prompt construction in rag_api.anthropic_client."""
+"""Tests for prompt construction in rag_api.openai_client."""
 
 from __future__ import annotations
 
 from rag_pipeline.search import SearchResult
 
-from rag_api.anthropic_client import build_prompt
+from rag_api.openai_client import build_prompt
 
 
 def _make_result(**overrides):

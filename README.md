@@ -81,7 +81,7 @@ See [`replit.md`](./replit.md) for the day-to-day architecture-decisions log kep
 - **Node.js 24** and **pnpm** (this repo enforces pnpm via a `preinstall` guard — `npm install` will fail on purpose)
 - **Python 3.11+** with `venv`, only if you're working on `services/rag-pipeline` or `services/rag-api`
 - A **Supabase** project with the `pgvector` extension (for the RAG backend) — see [`services/rag-pipeline/README.md`](./services/rag-pipeline/README.md)
-- API keys: **OpenAI** (embeddings) and **Anthropic** (chat answer synthesis) — only needed if you're running the RAG backend against live services rather than mocks
+- API keys: **OpenAI** (embeddings and chat answer synthesis) — only needed if you're running the RAG backend against live services rather than mocks
 
 ## Quick start
 
@@ -101,7 +101,7 @@ pnpm install
 # 2. Set up the RAG backend (see services/rag-pipeline/README.md for Supabase setup)
 cd services/rag-pipeline && python3 -m venv .venv && source .venv/bin/activate && pip install -e .
 cd ../rag-api && pip install -e ../rag-pipeline -e ".[dev]"
-cp .env.example .env   # fill in SUPABASE_URL, SUPABASE_SERVICE_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, INTERNAL_API_KEY
+cp .env.example .env   # fill in SUPABASE_URL, SUPABASE_SERVICE_KEY, OPENAI_API_KEY, INTERNAL_API_KEY
 uvicorn rag_api.main:app --reload --port 8000
 
 # 3. Point the frontend at it
@@ -118,7 +118,7 @@ pnpm --filter @workspace/api-server run dev
 | App | File | Key variables |
 | --- | --- | --- |
 | `artifacts/finsight` | `.env.local` (gitignored, copy from `.env.example`) | `RAG_API_BASE_URL`, `RAG_API_INTERNAL_KEY` |
-| `services/rag-api` | `.env` (gitignored, copy from `.env.example`) | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `INTERNAL_API_KEY` |
+| `services/rag-api` | `.env` (gitignored, copy from `.env.example`) | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `OPENAI_API_KEY`, `INTERNAL_API_KEY` |
 | `services/rag-pipeline` | `.env` (gitignored, copy from `.env.example`) | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `OPENAI_API_KEY` |
 
 `RAG_API_INTERNAL_KEY` (frontend) and `INTERNAL_API_KEY` (rag-api) must be the
@@ -171,13 +171,13 @@ for what happens behind that proxy.
 ## Testing
 
 - **RAG pipeline / RAG API**: `pytest` in each service's virtualenv — all
-  tests mock external calls (Supabase, OpenAI, Anthropic), so no live
-  credentials are needed to run the suite.
+  tests mock external calls (Supabase, OpenAI), so no live credentials are
+  needed to run the suite.
 - **Frontend / API server**: no automated test suite yet — `pnpm run
   typecheck` across the workspace is the current safety net, backed up by
   manual verification in a running dev server.
-- Live end-to-end testing against real Supabase/OpenAI/Anthropic credentials
-  and the actual AWS deployment have not been run in this environment — see
+- Live end-to-end testing against real Supabase/OpenAI credentials and the
+  actual AWS deployment have not been run in this environment — see
   [`BACKLOG.md`](./BACKLOG.md) for exactly what's verified vs. what still
   needs real credentials.
 
