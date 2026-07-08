@@ -58,8 +58,7 @@ See [`replit.md`](./replit.md) for the day-to-day architecture-decisions log kep
 .
 ├── artifacts/
 │   ├── finsight/           Next.js 15 frontend (the app itself)
-│   ├── api-server/         Express API server (mirrors the RAG proxy routes)
-│   └── mockup-sandbox/     Vite + shadcn/ui sandbox for UI mockups/prototyping
+│   └── api-server/         Express API server (mirrors the RAG proxy routes)
 ├── lib/
 │   ├── db/                 Drizzle schema/client (@workspace/db)
 │   ├── api-spec/           OpenAPI spec + orval codegen config
@@ -136,7 +135,6 @@ pnpm run typecheck                                 # typecheck every package in 
 pnpm run build                                      # typecheck + build every package
 pnpm --filter @workspace/finsight run dev           # frontend, http://localhost:$PORT
 pnpm --filter @workspace/api-server run dev         # Express API server, port 8080
-pnpm --filter @workspace/mockup-sandbox run dev     # Vite UI sandbox for mockups
 ```
 
 Python services (from within `services/rag-pipeline` or `services/rag-api`,
