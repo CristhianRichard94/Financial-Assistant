@@ -13,3 +13,4 @@ dist/
 # CDK
 infra/cdk.out/
 infra/.venv/
+infra/cdk.context.json

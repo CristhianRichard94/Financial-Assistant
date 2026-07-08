@@ -22,7 +22,7 @@ app = cdk.App()
 RagApiStack(
     app,
     "FinSightRagApiStack",
-    description="FinSight RAG API: ECS Fargate service behind an ALB, exposing the RAG pipeline over HTTP.",
+    description="FinSight RAG API: ECS Fargate service behind an ALB and CloudFront distribution, exposing the RAG pipeline over HTTPS.",
 )
 
 app.synth()
