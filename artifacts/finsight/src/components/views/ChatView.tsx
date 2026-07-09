@@ -146,11 +146,18 @@ export function ChatView() {
   const [optimisticMessages, setOptimisticMessages] = useState<DisplayMessage[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  // For each in-flight optimistic entry (keyed by clientId), the ids of
-  // server messages that already existed *before* that entry was created.
-  // Used below to recognize "this optimistic message has now landed on the
-  // server" without relying only on that entry's own mutate() settling.
-  const baselineIdsRef = useRef<Map<string, Set<string>>>(new Map());
+  // Ids of server messages that existed at the very first successful load —
+  // true pre-existing history, never a valid match for a later optimistic
+  // send. Captured once (not per-send): a per-send snapshot of "current
+  // messages" is unsafe, because a *different* concurrent send's refetch can
+  // resolve first and already include this send's own eventual message
+  // (the API persists synchronously before replying), which would poison
+  // that snapshot with the send's own id and make it un-matchable forever.
+  const initialMessageIdsRef = useRef<Set<string> | null>(null);
+  // Ids of server messages already matched to a resolved optimistic entry,
+  // so the same server message can't be claimed twice by two entries with
+  // identical content.
+  const claimedIdsRef = useRef<Set<string>>(new Set());
 
   const hasDocuments =
     documents && documents.some((d) => d.status === "processed");
@@ -158,8 +165,15 @@ export function ChatView() {
   // Server-fetched history plus any optimistic user messages that haven't
   // been resolved yet (still pending or failed). Successfully-sent
   // optimistic entries are removed once the server list has been refetched,
-  // so they never appear twice.
-  const displayMessages: DisplayMessage[] = [...(messages ?? []), ...optimisticMessages];
+  // so they never appear twice. Sorted by timestamp so that unresolved
+  // (pending/failed) local entries render at their true chronological
+  // position rather than always trailing after the whole server list —
+  // otherwise a failed send followed by a later successful one would show
+  // the later message above the earlier, failed one. Array#sort is stable,
+  // so entries sharing a timestamp keep their original relative order.
+  const displayMessages: DisplayMessage[] = [...(messages ?? []), ...optimisticMessages].sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  );
   const hasPendingSend = optimisticMessages.some((m) => m.status === "pending");
 
   const sendMutation = useMutation<unknown, Error, { clientId: string; content: string }>({
@@ -181,7 +195,6 @@ export function ChatView() {
       await queryClient.invalidateQueries({ queryKey: ["chat", "messages"] });
     },
     onError: (_error, variables) => {
-      baselineIdsRef.current.delete(variables.clientId);
       setOptimisticMessages((prev) =>
         prev.map((m) => (m.id === variables.clientId ? { ...m, status: "failed" } : m))
       );
@@ -189,47 +202,91 @@ export function ChatView() {
     },
   });
 
-  // Reconcile pending optimistic entries against every update of the
-  // server-fetched message list, not just when their own mutate() call
-  // settles. The API persists the user's message synchronously, before it
-  // awaits the (potentially slow) RAG call and responds to the POST — so a
+  // Reconcile pending optimistic entries against the server-fetched message
+  // list. Runs on every update of either `messages` *or* `optimisticMessages`
+  // — not just when a send's own mutate() call settles — for two reasons:
+  // (1) the API persists the user's message synchronously, before it awaits
+  // the (potentially slow) RAG call and responds to the POST, so a
   // *different*, faster concurrent send's refetch can reveal this message on
-  // the server well before this send's own POST response reaches the
-  // client. Matching on content (scoped to messages that are new relative to
-  // this entry's baseline, so pre-existing identical-content history can
-  // never be mismatched) lets us drop the optimistic bubble the moment the
-  // server confirms it, regardless of which mutate() triggered the refetch.
+  // the server well before this send's own POST response reaches the client;
+  // (2) React Query's structural sharing keeps the same `messages` reference
+  // across refetches that return an identical body, so a new optimistic
+  // entry created *after* such a refetch (already reflecting it) would never
+  // get reconciled if this effect only re-ran on `messages` changes — it
+  // also needs to re-check whenever a new entry is added. Matching on
+  // content, scoped to messages that aren't part of pre-existing history and
+  // haven't already been claimed by another entry, lets us drop the
+  // optimistic bubble the moment the server confirms it, regardless of which
+  // mutate() triggered the refetch.
   useEffect(() => {
     if (!messages) return;
+    if (initialMessageIdsRef.current === null) {
+      // First successful load: everything here is pre-existing history,
+      // not a message any optimistic entry could ever legitimately match.
+      initialMessageIdsRef.current = new Set(messages.map((m) => m.id));
+      return;
+    }
     setOptimisticMessages((prev) => {
       if (!prev.some((m) => m.status === "pending")) return prev;
-      const claimed = new Set<string>();
       let changed = false;
       const next = prev.filter((m) => {
         if (m.status !== "pending") return true;
-        const baseline = baselineIdsRef.current.get(m.id);
         const match = messages.find(
           (sm) =>
             sm.role === "user" &&
             sm.content === m.content &&
-            !claimed.has(sm.id) &&
-            !baseline?.has(sm.id)
+            !initialMessageIdsRef.current!.has(sm.id) &&
+            !claimedIdsRef.current.has(sm.id)
         );
         if (!match) return true;
-        claimed.add(match.id);
-        baselineIdsRef.current.delete(m.id);
+        claimedIdsRef.current.add(match.id);
         changed = true;
         return false;
       });
       return changed ? next : prev;
     });
-  }, [messages]);
+  }, [messages, optimisticMessages]);
 
   const handleSend = () => {
     const content = input.trim();
     if (!content) return;
+    // Guard against sending before the initial history fetch has succeeded,
+    // since the reconciliation effect above only starts matching new
+    // messages against optimistic entries once it has captured that first
+    // load's ids as pre-existing history. Gate on `!messages` (i.e. no data
+    // has ever been fetched yet) rather than `isLoading || isError`:
+    // - `isLoading` (`isPending && isFetching`) is false whenever the query's
+    //   `fetchStatus` is `"paused"` — e.g. the browser is offline when this
+    //   query first mounts under the default `networkMode: "online"`. In
+    //   that state the query never even attempts a fetch, `messages` stays
+    //   `undefined`, and neither `isLoading` nor `isError` is true, so an
+    //   `isLoading || isError` guard would let a send through with no
+    //   baseline captured — reopening the exact stuck-pending/duplicate-
+    //   bubble bug this guard exists to prevent.
+    // - `isError` reflects only the *latest* fetch attempt, not "has this
+    //   query ever succeeded". Once `messages` has been populated once,
+    //   React Query keeps that data across a later failed background
+    //   refetch (the query's `data` isn't cleared on error) — so `!messages`
+    //   correctly stays `false` forever after the first success, while
+    //   `isError` could flip back to `true` on a transient blip and
+    //   needlessly re-block sends that are perfectly safe to allow.
+    // `messages` and `initialMessageIdsRef.current` become non-null together
+    // (the reconciliation effect sets the ref the moment `messages` is first
+    // populated), so this doesn't reintroduce an ordering gap: React commits
+    // the render and flushes that effect synchronously, before the browser
+    // can dispatch another user-initiated event, so there's no window in
+    // which a real click/Enter can observe `messages` truthy but the ref
+    // still null.
+    if (!messages) {
+      if (!isLoading) {
+        toast.error(
+          "Couldn't load message history yet. Please wait for it to finish loading before sending.",
+          { id: "chat-history-error" }
+        );
+      }
+      return;
+    }
     const clientId = nanoid();
-    baselineIdsRef.current.set(clientId, new Set((messages ?? []).map((m) => m.id)));
     setOptimisticMessages((prev) => [
       ...prev,
       { id: clientId, role: "user", content, timestamp: new Date().toISOString(), status: "pending" },
@@ -279,7 +336,14 @@ export function ChatView() {
           <div className="flex justify-center py-12">
             <Loader2 className="w-6 h-6 animate-spin text-[hsl(var(--muted-foreground))]" />
           </div>
-        ) : isError ? (
+        ) : isError && !messages ? (
+          // Only replace the whole panel with the hard error screen when we
+          // have no data to fall back on at all. If `messages` is already
+          // populated (a prior load succeeded), a later background refetch
+          // failure must not hide the already-visible conversation — React
+          // Query keeps the last successful `data` around across a failed
+          // refetch, so `messages` stays truthy and we fall through to the
+          // normal list/empty-state branches below instead.
           <div className="flex flex-col items-center justify-center h-full py-16 text-center">
             <AlertCircle className="w-10 h-10 text-[hsl(var(--muted-foreground))]/40 mb-3" />
             <p className="text-sm text-[hsl(var(--muted-foreground))]">Couldn&apos;t load messages. Please try again.</p>
@@ -341,7 +405,7 @@ export function ChatView() {
           </div>
           <button
             onClick={handleSend}
-            disabled={!input.trim()}
+            disabled={!input.trim() || !messages}
             className="w-10 h-10 rounded-xl bg-[hsl(var(--primary))] text-white flex items-center justify-center hover:opacity-90 transition-opacity disabled:opacity-40 shrink-0"
           >
             <Send className="w-4 h-4" />
