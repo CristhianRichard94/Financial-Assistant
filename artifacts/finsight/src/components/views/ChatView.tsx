@@ -2,10 +2,19 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, KeyboardEvent } from "react";
-import { Send, Bot, User, Loader2, FileText, AlertCircle } from "lucide-react";
+import { Send, Bot, User, Loader2, FileText, AlertCircle, Clock } from "lucide-react";
+import { nanoid } from "nanoid";
+import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
 import Link from "next/link";
 import type { ChatMessage, Document } from "@/lib/store";
+
+type OptimisticStatus = "pending" | "failed";
+
+/** A chat message as rendered in the transcript. Optimistic user messages
+ * carry a `status` while they are in flight or have failed to send; server
+ * messages (and successfully-sent optimistic ones, once resolved) do not. */
+type DisplayMessage = ChatMessage & { status?: OptimisticStatus };
 
 function useMessages() {
   return useQuery<ChatMessage[]>({
@@ -29,8 +38,17 @@ function useDocuments() {
   });
 }
 
-function MessageBubble({ msg }: { msg: ChatMessage }) {
+function MessageBubble({
+  msg,
+  onRetryFailed,
+}: {
+  msg: DisplayMessage;
+  onRetryFailed?: (msg: DisplayMessage) => void;
+}) {
   const isUser = msg.role === "user";
+  const isPending = isUser && msg.status === "pending";
+  const isFailed = isUser && msg.status === "failed";
+
   return (
     <div className={cn("flex gap-3 items-start", isUser && "flex-row-reverse")}>
       <div
@@ -41,20 +59,59 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
       >
         {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
       </div>
+
       <div className={cn("flex flex-col gap-1 max-w-[75%]", isUser && "items-end")}>
         <div
+          onClick={isFailed ? () => onRetryFailed?.(msg) : undefined}
+          onKeyDown={
+            isFailed
+              ? (e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onRetryFailed?.(msg);
+                  }
+                }
+              : undefined
+          }
+          role={isFailed ? "button" : undefined}
+          tabIndex={isFailed ? 0 : undefined}
+          aria-label={isFailed ? "Message not sent. Press Enter to edit and resend." : undefined}
           className={cn(
             "px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap",
             isUser
               ? "bg-[hsl(var(--primary))] text-white rounded-tr-sm"
-              : "bg-[hsl(var(--card))] border border-[hsl(var(--border))] text-[hsl(var(--foreground))] rounded-tl-sm"
+              : "bg-[hsl(var(--card))] border border-[hsl(var(--border))] text-[hsl(var(--foreground))] rounded-tl-sm",
+            isPending && "opacity-70",
+            isFailed &&
+              "ring-1 ring-red-400/70 dark:ring-red-500/60 cursor-pointer hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2 transition"
           )}
         >
           {msg.content}
         </div>
-        <span className="text-xs text-[hsl(var(--muted-foreground))]">
-          {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-        </span>
+
+        <div className={cn("flex items-center gap-1.5 flex-wrap", isUser && "justify-end")}>
+          {isPending && (
+            <span className="inline-flex items-center gap-1 text-[hsl(var(--muted-foreground))]">
+              <Clock className="w-3 h-3" aria-hidden="true" />
+              <span className="sr-only">Sending…</span>
+            </span>
+          )}
+
+          <span className="text-xs text-[hsl(var(--muted-foreground))]">
+            {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </span>
+
+          {isFailed && (
+            <span
+              role="status"
+              aria-label="Message not sent"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-400"
+            >
+              <AlertCircle className="w-3 h-3" aria-hidden="true" />
+              Not sent
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -86,14 +143,27 @@ export function ChatView() {
   const { data: messages, isLoading, isError } = useMessages();
   const { data: documents } = useDocuments();
   const [input, setInput] = useState("");
+  const [optimisticMessages, setOptimisticMessages] = useState<DisplayMessage[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // For each in-flight optimistic entry (keyed by clientId), the ids of
+  // server messages that already existed *before* that entry was created.
+  // Used below to recognize "this optimistic message has now landed on the
+  // server" without relying only on that entry's own mutate() settling.
+  const baselineIdsRef = useRef<Map<string, Set<string>>>(new Map());
 
   const hasDocuments =
     documents && documents.some((d) => d.status === "processed");
 
-  const sendMutation = useMutation({
-    mutationFn: async (content: string) => {
+  // Server-fetched history plus any optimistic user messages that haven't
+  // been resolved yet (still pending or failed). Successfully-sent
+  // optimistic entries are removed once the server list has been refetched,
+  // so they never appear twice.
+  const displayMessages: DisplayMessage[] = [...(messages ?? []), ...optimisticMessages];
+  const hasPendingSend = optimisticMessages.some((m) => m.status === "pending");
+
+  const sendMutation = useMutation<unknown, Error, { clientId: string; content: string }>({
+    mutationFn: async ({ content }) => {
       const res = await fetch("/api/chat/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -102,16 +172,75 @@ export function ChatView() {
       if (!res.ok) throw new Error("Failed to send");
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["chat", "messages"] });
+    onSuccess: async () => {
+      // Refetch so the server list includes this message (and the assistant
+      // reply). The reconciliation effect below is what actually drops the
+      // matching optimistic entry once it sees the confirmed message —
+      // including entries for *other* concurrent sends whose own mutate()
+      // hasn't settled yet, which is what closes the duplicate-bubble race.
+      await queryClient.invalidateQueries({ queryKey: ["chat", "messages"] });
+    },
+    onError: (_error, variables) => {
+      baselineIdsRef.current.delete(variables.clientId);
+      setOptimisticMessages((prev) =>
+        prev.map((m) => (m.id === variables.clientId ? { ...m, status: "failed" } : m))
+      );
+      toast.error("Your message couldn't be sent. Please try again.");
     },
   });
 
+  // Reconcile pending optimistic entries against every update of the
+  // server-fetched message list, not just when their own mutate() call
+  // settles. The API persists the user's message synchronously, before it
+  // awaits the (potentially slow) RAG call and responds to the POST — so a
+  // *different*, faster concurrent send's refetch can reveal this message on
+  // the server well before this send's own POST response reaches the
+  // client. Matching on content (scoped to messages that are new relative to
+  // this entry's baseline, so pre-existing identical-content history can
+  // never be mismatched) lets us drop the optimistic bubble the moment the
+  // server confirms it, regardless of which mutate() triggered the refetch.
+  useEffect(() => {
+    if (!messages) return;
+    setOptimisticMessages((prev) => {
+      if (!prev.some((m) => m.status === "pending")) return prev;
+      const claimed = new Set<string>();
+      let changed = false;
+      const next = prev.filter((m) => {
+        if (m.status !== "pending") return true;
+        const baseline = baselineIdsRef.current.get(m.id);
+        const match = messages.find(
+          (sm) =>
+            sm.role === "user" &&
+            sm.content === m.content &&
+            !claimed.has(sm.id) &&
+            !baseline?.has(sm.id)
+        );
+        if (!match) return true;
+        claimed.add(match.id);
+        baselineIdsRef.current.delete(m.id);
+        changed = true;
+        return false;
+      });
+      return changed ? next : prev;
+    });
+  }, [messages]);
+
   const handleSend = () => {
-    const msg = input.trim();
-    if (!msg || sendMutation.isPending) return;
+    const content = input.trim();
+    if (!content) return;
+    const clientId = nanoid();
+    baselineIdsRef.current.set(clientId, new Set((messages ?? []).map((m) => m.id)));
+    setOptimisticMessages((prev) => [
+      ...prev,
+      { id: clientId, role: "user", content, timestamp: new Date().toISOString(), status: "pending" },
+    ]);
     setInput("");
-    sendMutation.mutate(msg);
+    sendMutation.mutate({ clientId, content });
+  };
+
+  const handleRetryFailed = (msg: DisplayMessage) => {
+    setInput(msg.content);
+    textareaRef.current?.focus();
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -123,7 +252,7 @@ export function ChatView() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, sendMutation.isPending]);
+  }, [messages, optimisticMessages]);
 
   return (
     <div className="flex flex-col h-full bg-[hsl(var(--background))]">
@@ -155,7 +284,7 @@ export function ChatView() {
             <AlertCircle className="w-10 h-10 text-[hsl(var(--muted-foreground))]/40 mb-3" />
             <p className="text-sm text-[hsl(var(--muted-foreground))]">Couldn&apos;t load messages. Please try again.</p>
           </div>
-        ) : !messages?.length ? (
+        ) : !displayMessages.length ? (
           <div className="flex flex-col items-center justify-center h-full py-16 text-center space-y-4">
             <div className="w-16 h-16 rounded-full bg-[hsl(var(--accent))] flex items-center justify-center">
               <Bot className="w-8 h-8 text-[hsl(var(--accent-foreground))]" />
@@ -168,10 +297,12 @@ export function ChatView() {
             </div>
           </div>
         ) : (
-          messages.map((msg) => <MessageBubble key={msg.id} msg={msg} />)
+          displayMessages.map((msg) => (
+            <MessageBubble key={msg.id} msg={msg} onRetryFailed={handleRetryFailed} />
+          ))
         )}
 
-        {sendMutation.isPending && <TypingIndicator />}
+        {hasPendingSend && <TypingIndicator />}
         <div ref={bottomRef} />
       </div>
 
@@ -204,21 +335,16 @@ export function ChatView() {
                   ? "Ask me about your finances…"
                   : "Ask me anything…"
               }
-              disabled={sendMutation.isPending}
               className="w-full resize-none rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-4 py-3 pr-12 text-sm placeholder:text-[hsl(var(--muted-foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))] disabled:opacity-50 transition-colors min-h-[48px] max-h-40"
               style={{ fieldSizing: "content" } as React.CSSProperties}
             />
           </div>
           <button
             onClick={handleSend}
-            disabled={!input.trim() || sendMutation.isPending}
+            disabled={!input.trim()}
             className="w-10 h-10 rounded-xl bg-[hsl(var(--primary))] text-white flex items-center justify-center hover:opacity-90 transition-opacity disabled:opacity-40 shrink-0"
           >
-            {sendMutation.isPending ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Send className="w-4 h-4" />
-            )}
+            <Send className="w-4 h-4" />
           </button>
         </div>
         <p className="text-xs text-[hsl(var(--muted-foreground))] mt-2 text-center max-w-4xl mx-auto">
