@@ -69,7 +69,6 @@ This testing surfaced and fixed two bugs:
 
 Nothing blocking. Remaining optional follow-ups (all non-blocking, flagged by reviewers as out of scope for this pass):
 - `artifacts/finsight/src/app/api/chat/messages/route.ts` has the same unbounded-`req.json()`-buffering pattern as the fixed upload route, but it pre-dates this feature — not a regression, tracked as a future ticket.
-- Other Multer error codes (e.g. `LIMIT_UNEXPECTED_FILE`) on `api-server` still fall to a generic 500 rather than a 400 — no information leak, just the "wrong" status code; flagged by both reviewers as non-blocking.
 - `ChatView`'s secondary `useDocuments()` query (used only for `hasDocuments`) has no dedicated error-state UI — a backend outage silently renders as "no documents" rather than an error; flagged by QA as non-blocking.
 - No browser/Playwright automation available in this sandbox — the query-error-handling fix was verified by code inspection, typecheck, and curl rather than an actual browser repro. Worth confirming visually in a real browser when possible.
 - Live AWS deployment and live end-to-end credential testing are the user's to run whenever ready.
