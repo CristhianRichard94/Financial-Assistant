@@ -38,11 +38,17 @@ interface RouteConfig {
 function installFetchMock(routes: {
   messages: RouteConfig | RouteConfig[];
   documents?: RouteConfig;
-  post?: RouteConfig;
+  post?: RouteConfig | RouteConfig[];
   postDelayMs?: number;
 }) {
   let messageCallCount = 0;
+  let postCallCount = 0;
   const messagesQueue = Array.isArray(routes.messages) ? routes.messages : [routes.messages];
+  const postQueue = routes.post
+    ? Array.isArray(routes.post)
+      ? routes.post
+      : [routes.post]
+    : [{ ok: true, body: {} }];
 
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
@@ -57,7 +63,9 @@ function installFetchMock(routes: {
       if (routes.postDelayMs) {
         await new Promise((resolve) => setTimeout(resolve, routes.postDelayMs));
       }
-      const route = routes.post ?? { ok: true, body: {} };
+      const idx = Math.min(postCallCount, postQueue.length - 1);
+      const route = postQueue[idx];
+      postCallCount += 1;
       return { ok: route.ok, status: route.ok ? 201 : 500, json: async () => route.body } as Response;
     }
     if (url.includes("/api/documents")) {
@@ -187,5 +195,100 @@ describe("ChatView", () => {
     await waitFor(() =>
       expect(screen.getByText("Here's your answer.")).toBeInTheDocument()
     );
+  });
+
+  it("keeps a failed message in its chronological position when a later send succeeds", async () => {
+    const user = userEvent.setup();
+    const now = Date.now();
+    const secondUserMsg: ChatMessage = {
+      id: "m2",
+      role: "user",
+      content: "second-msg",
+      timestamp: new Date(now + 60_000).toISOString(),
+    };
+    const assistantReply: ChatMessage = {
+      id: "m3",
+      role: "assistant",
+      content: "Reply to second-msg.",
+      timestamp: new Date(now + 61_000).toISOString(),
+    };
+
+    installFetchMock({
+      messages: [
+        { ok: true, body: seedMessages },
+        { ok: true, body: [...seedMessages, secondUserMsg, assistantReply] },
+      ],
+      post: [
+        { ok: false, body: {} },
+        { ok: true, body: { userMessage: secondUserMsg, assistantMessage: assistantReply } },
+      ],
+    });
+
+    renderWithClient(<ChatView />);
+
+    await waitFor(() => expect(screen.getByText("Hello! How can I help?")).toBeInTheDocument());
+
+    const textarea = screen.getByPlaceholderText(/Ask me/);
+
+    await user.type(textarea, "first-msg");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(screen.getByText("Not sent")).toBeInTheDocument());
+
+    await user.type(textarea, "second-msg");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(screen.getByText("Reply to second-msg.")).toBeInTheDocument());
+
+    // The failed "first-msg" must still render before the later, successfully
+    // sent "second-msg" — reflecting true chronological order — rather than
+    // being appended after it just because it was resolved (as failed) later.
+    const firstEl = screen.getByText("first-msg");
+    const secondEl = screen.getByText("second-msg");
+    expect(
+      firstEl.compareDocumentPosition(secondEl) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(screen.getByText("Not sent")).toBeInTheDocument();
+  });
+
+  it("does not render a duplicate bubble when two sends resolve concurrently", async () => {
+    const user = userEvent.setup();
+    const msgOne: ChatMessage = {
+      id: "m2",
+      role: "user",
+      content: "msg one",
+      timestamp: "2025-05-01T00:04:00.000Z",
+    };
+    const msgTwo: ChatMessage = {
+      id: "m3",
+      role: "user",
+      content: "msg two",
+      timestamp: "2025-05-01T00:04:05.000Z",
+    };
+
+    installFetchMock({
+      messages: [
+        { ok: true, body: seedMessages },
+        { ok: true, body: [...seedMessages, msgOne, msgTwo] },
+      ],
+      post: { ok: true, body: {} },
+      postDelayMs: 30,
+    });
+
+    renderWithClient(<ChatView />);
+
+    await waitFor(() => expect(screen.getByText("Hello! How can I help?")).toBeInTheDocument());
+
+    const textarea = screen.getByPlaceholderText(/Ask me/);
+
+    await user.type(textarea, "msg one");
+    await user.keyboard("{Enter}");
+    await user.type(textarea, "msg two");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(screen.getAllByText("msg one")).toHaveLength(1);
+      expect(screen.getAllByText("msg two")).toHaveLength(1);
+    });
   });
 });
