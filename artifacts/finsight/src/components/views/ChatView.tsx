@@ -253,20 +253,37 @@ export function ChatView() {
     // Guard against sending before the initial history fetch has succeeded,
     // since the reconciliation effect above only starts matching new
     // messages against optimistic entries once it has captured that first
-    // load's ids as pre-existing history. `isError` must be checked too, not
-    // just `isLoading`: once the initial fetch exhausts retries and settles
-    // to an error, `isLoading` flips back to `false` while `messages` stays
-    // `undefined` and `initialMessageIdsRef.current` stays `null` — sending
-    // in that state would let a later successful refetch (which may already
-    // include this very message, since the POST persists synchronously)
-    // get misclassified as pristine pre-existing history, permanently
-    // excluding the message's id from reconciliation. This isn't a
-    // permanent lockout: React Query keeps retrying/refetching the query,
-    // and once `isError` flips back to `false` on a successful fetch,
-    // sending is allowed again.
-    if (isLoading) return;
-    if (isError) {
-      toast.error("Couldn't load message history yet. Please wait for it to finish loading before sending.");
+    // load's ids as pre-existing history. Gate on `!messages` (i.e. no data
+    // has ever been fetched yet) rather than `isLoading || isError`:
+    // - `isLoading` (`isPending && isFetching`) is false whenever the query's
+    //   `fetchStatus` is `"paused"` — e.g. the browser is offline when this
+    //   query first mounts under the default `networkMode: "online"`. In
+    //   that state the query never even attempts a fetch, `messages` stays
+    //   `undefined`, and neither `isLoading` nor `isError` is true, so an
+    //   `isLoading || isError` guard would let a send through with no
+    //   baseline captured — reopening the exact stuck-pending/duplicate-
+    //   bubble bug this guard exists to prevent.
+    // - `isError` reflects only the *latest* fetch attempt, not "has this
+    //   query ever succeeded". Once `messages` has been populated once,
+    //   React Query keeps that data across a later failed background
+    //   refetch (the query's `data` isn't cleared on error) — so `!messages`
+    //   correctly stays `false` forever after the first success, while
+    //   `isError` could flip back to `true` on a transient blip and
+    //   needlessly re-block sends that are perfectly safe to allow.
+    // `messages` and `initialMessageIdsRef.current` become non-null together
+    // (the reconciliation effect sets the ref the moment `messages` is first
+    // populated), so this doesn't reintroduce an ordering gap: React commits
+    // the render and flushes that effect synchronously, before the browser
+    // can dispatch another user-initiated event, so there's no window in
+    // which a real click/Enter can observe `messages` truthy but the ref
+    // still null.
+    if (!messages) {
+      if (!isLoading) {
+        toast.error(
+          "Couldn't load message history yet. Please wait for it to finish loading before sending.",
+          { id: "chat-history-error" }
+        );
+      }
       return;
     }
     const clientId = nanoid();
@@ -319,7 +336,14 @@ export function ChatView() {
           <div className="flex justify-center py-12">
             <Loader2 className="w-6 h-6 animate-spin text-[hsl(var(--muted-foreground))]" />
           </div>
-        ) : isError ? (
+        ) : isError && !messages ? (
+          // Only replace the whole panel with the hard error screen when we
+          // have no data to fall back on at all. If `messages` is already
+          // populated (a prior load succeeded), a later background refetch
+          // failure must not hide the already-visible conversation — React
+          // Query keeps the last successful `data` around across a failed
+          // refetch, so `messages` stays truthy and we fall through to the
+          // normal list/empty-state branches below instead.
           <div className="flex flex-col items-center justify-center h-full py-16 text-center">
             <AlertCircle className="w-10 h-10 text-[hsl(var(--muted-foreground))]/40 mb-3" />
             <p className="text-sm text-[hsl(var(--muted-foreground))]">Couldn&apos;t load messages. Please try again.</p>
@@ -381,7 +405,7 @@ export function ChatView() {
           </div>
           <button
             onClick={handleSend}
-            disabled={!input.trim() || isLoading || isError}
+            disabled={!input.trim() || !messages}
             className="w-10 h-10 rounded-xl bg-[hsl(var(--primary))] text-white flex items-center justify-center hover:opacity-90 transition-opacity disabled:opacity-40 shrink-0"
           >
             <Send className="w-4 h-4" />

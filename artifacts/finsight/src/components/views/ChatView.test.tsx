@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, onlineManager } from "@tanstack/react-query";
 import { ChatView } from "@/components/views/ChatView";
 import type { ChatMessage, Document } from "@/lib/store";
 
@@ -91,6 +91,9 @@ function installFetchMock(routes: {
 describe("ChatView", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    // Some tests flip the browser "online" state; restore it so it can't
+    // leak into unrelated tests.
+    onlineManager.setOnline(true);
   });
 
   it("shows a loading spinner while messages are loading", () => {
@@ -331,7 +334,8 @@ describe("ChatView", () => {
     expect(document.querySelector(".animate-bounce")).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.some((call) => call[1]?.method === "POST")).toBe(false);
     expect(toast.error).toHaveBeenCalledWith(
-      "Couldn't load message history yet. Please wait for it to finish loading before sending."
+      "Couldn't load message history yet. Please wait for it to finish loading before sending.",
+      { id: "chat-history-error" }
     );
   });
 
@@ -396,5 +400,93 @@ describe("ChatView", () => {
     ).toHaveLength(1);
     expect(document.querySelector(".animate-bounce")).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.some((call) => call[1]?.method === "POST")).toBe(false);
+  });
+
+  it("blocks sending and never fetches when the browser is offline at mount (paused fetchStatus, not isLoading/isError)", async () => {
+    const user = userEvent.setup();
+    // Under the default networkMode "online", a query created while offline
+    // never attempts a fetch at all: fetchStatus is "paused", so
+    // isPending=true/isFetching=false (isLoading=false) and status stays
+    // "pending" (isError=false). Neither `isLoading` nor `isError` catches
+    // this state, which is exactly why the guard must key off `!messages`.
+    onlineManager.setOnline(false);
+    const fetchMock = installFetchMock({ messages: { ok: true, body: seedMessages } });
+
+    const { container } = renderWithClient(<ChatView />);
+
+    const textarea = screen.getByPlaceholderText(/Ask me/);
+    await user.type(textarea, "hi there");
+
+    const sendButton = container.querySelector("button[disabled]");
+    expect(sendButton).toBeInTheDocument();
+
+    await user.keyboard("{Enter}");
+
+    // Blocked: no optimistic bubble, no fetch attempted at all (not even the
+    // GET, since the query never left the paused state), and the typed text
+    // is preserved rather than silently discarded.
+    expect(textarea).toHaveValue("hi there");
+    expect(
+      screen.queryAllByText("hi there").filter((el) => el.tagName !== "TEXTAREA")
+    ).toHaveLength(0);
+    expect(document.querySelector(".animate-bounce")).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps existing history visible and still allows sending after a later background refetch fails", async () => {
+    const user = userEvent.setup();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    const fetchMock = installFetchMock({
+      // First GET (initial load) succeeds; a later, manually-triggered
+      // background refetch (standing in for a poll/invalidate/refocus
+      // refetch) fails.
+      messages: [
+        { ok: true, body: seedMessages },
+        { ok: false, body: {} },
+      ],
+      post: { ok: true, body: {} },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ChatView />
+      </QueryClientProvider>
+    );
+
+    await waitFor(() => expect(screen.getByText("Hello! How can I help?")).toBeInTheDocument());
+
+    const toastCallsBeforeRefetch = vi.mocked(toast.error).mock.calls.length;
+
+    await queryClient.refetchQueries({ queryKey: ["chat", "messages"] });
+
+    await waitFor(() => {
+      expect(queryClient.getQueryState(["chat", "messages"])?.status).toBe("error");
+    });
+
+    // The already-loaded conversation must remain visible — not replaced by
+    // the hard error screen — since `messages` (React Query's last
+    // successful `data`) is still populated despite the latest fetch
+    // erroring.
+    expect(screen.getByText("Hello! How can I help?")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Couldn't load messages. Please try again.")
+    ).not.toBeInTheDocument();
+
+    // Sending must still be allowed: the reconciliation baseline was already
+    // captured on the first successful load, so a later transient error must
+    // not re-block it.
+    const textarea = screen.getByPlaceholderText(/Ask me/);
+    await user.type(textarea, "still works");
+    await user.keyboard("{Enter}");
+
+    expect(textarea).toHaveValue("");
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some((call) => call[1]?.method === "POST")).toBe(true);
+    });
+    // No new "couldn't load history" toast was raised by this send.
+    expect(vi.mocked(toast.error).mock.calls.length).toBe(toastCallsBeforeRefetch);
   });
 });
