@@ -250,11 +250,25 @@ export function ChatView() {
   const handleSend = () => {
     const content = input.trim();
     if (!content) return;
-    // Guard against sending before the initial history fetch has settled,
+    // Guard against sending before the initial history fetch has succeeded,
     // since the reconciliation effect above only starts matching new
     // messages against optimistic entries once it has captured that first
-    // load's ids as pre-existing history.
+    // load's ids as pre-existing history. `isError` must be checked too, not
+    // just `isLoading`: once the initial fetch exhausts retries and settles
+    // to an error, `isLoading` flips back to `false` while `messages` stays
+    // `undefined` and `initialMessageIdsRef.current` stays `null` — sending
+    // in that state would let a later successful refetch (which may already
+    // include this very message, since the POST persists synchronously)
+    // get misclassified as pristine pre-existing history, permanently
+    // excluding the message's id from reconciliation. This isn't a
+    // permanent lockout: React Query keeps retrying/refetching the query,
+    // and once `isError` flips back to `false` on a successful fetch,
+    // sending is allowed again.
     if (isLoading) return;
+    if (isError) {
+      toast.error("Couldn't load message history yet. Please wait for it to finish loading before sending.");
+      return;
+    }
     const clientId = nanoid();
     setOptimisticMessages((prev) => [
       ...prev,
@@ -367,7 +381,7 @@ export function ChatView() {
           </div>
           <button
             onClick={handleSend}
-            disabled={!input.trim() || isLoading}
+            disabled={!input.trim() || isLoading || isError}
             className="w-10 h-10 rounded-xl bg-[hsl(var(--primary))] text-white flex items-center justify-center hover:opacity-90 transition-opacity disabled:opacity-40 shrink-0"
           >
             <Send className="w-4 h-4" />

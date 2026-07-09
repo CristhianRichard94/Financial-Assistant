@@ -5,6 +5,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ChatView } from "@/components/views/ChatView";
 import type { ChatMessage, Document } from "@/lib/store";
 
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+import { toast } from "sonner";
+
 const processedDoc: Document = {
   id: "d1",
   name: "statement.pdf",
@@ -290,5 +299,102 @@ describe("ChatView", () => {
       expect(screen.getAllByText("msg one")).toHaveLength(1);
       expect(screen.getAllByText("msg two")).toHaveLength(1);
     });
+  });
+
+  it("blocks sending while the initial message load is in an error state", async () => {
+    const user = userEvent.setup();
+    const fetchMock = installFetchMock({ messages: { ok: false, body: {} } });
+
+    const { container } = renderWithClient(<ChatView />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Couldn't load messages. Please try again.")).toBeInTheDocument()
+    );
+
+    const textarea = screen.getByPlaceholderText(/Ask me/);
+    await user.type(textarea, "hi there");
+
+    // The send button must be disabled while errored, not just while loading.
+    const sendButton = container.querySelector("button[disabled]");
+    expect(sendButton).toBeInTheDocument();
+
+    await user.keyboard("{Enter}");
+
+    // Blocked: no optimistic bubble, no POST, no typing indicator, and the
+    // typed text is preserved rather than silently discarded. (The textarea
+    // itself still contains "hi there" — queryAllByText also matches its
+    // text node, so bubbles are asserted by excluding the textarea itself.)
+    expect(textarea).toHaveValue("hi there");
+    expect(
+      screen.queryAllByText("hi there").filter((el) => el.tagName !== "TEXTAREA")
+    ).toHaveLength(0);
+    expect(document.querySelector(".animate-bounce")).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some((call) => call[1]?.method === "POST")).toBe(false);
+    expect(toast.error).toHaveBeenCalledWith(
+      "Couldn't load message history yet. Please wait for it to finish loading before sending."
+    );
+  });
+
+  it("does not produce a duplicate/stuck-pending bubble when the initial load fails, a send is attempted while errored, and the load later recovers with a body that already reflects that content", async () => {
+    const user = userEvent.setup();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    // Simulates a message that becomes visible on the server independently
+    // of this client's own (blocked) send attempt — e.g. another device, or
+    // a prior attempt from before the guard existed. What matters is that
+    // the very first *successful* load, whenever it happens, is always
+    // treated as pre-existing history exactly once.
+    const persistedUserMsg: ChatMessage = {
+      id: "m2",
+      role: "user",
+      content: "hi there",
+      timestamp: "2025-05-01T00:04:00.000Z",
+    };
+
+    const fetchMock = installFetchMock({
+      messages: [
+        { ok: false, body: {} },
+        { ok: true, body: [...seedMessages, persistedUserMsg] },
+      ],
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ChatView />
+      </QueryClientProvider>
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText("Couldn't load messages. Please try again.")).toBeInTheDocument()
+    );
+
+    const textarea = screen.getByPlaceholderText(/Ask me/);
+    await user.type(textarea, "hi there");
+    await user.keyboard("{Enter}");
+
+    // The attempted send while errored must be a true no-op: it never
+    // creates an optimistic entry and never POSTs, so it can't be the thing
+    // that later gets duplicated once the load recovers.
+    expect(fetchMock.mock.calls.some((call) => call[1]?.method === "POST")).toBe(false);
+
+    // Recover the query (standing in for React Query's built-in retry/
+    // refetch, disabled here for determinism) with a body that already
+    // contains "hi there" — the exact shape of the regression QA reported.
+    await queryClient.refetchQueries({ queryKey: ["chat", "messages"] });
+
+    await waitFor(() => expect(screen.getByText("hi there")).toBeInTheDocument());
+
+    // Exactly one bubble, and no stuck "Sending…" indicator: the guard
+    // prevented a second, un-reconcilable optimistic copy from ever being
+    // created. (The blocked send never cleared the textarea, so it still
+    // holds "hi there" too — excluded here since we're only counting
+    // rendered message bubbles.)
+    expect(
+      screen.getAllByText("hi there").filter((el) => el.tagName !== "TEXTAREA")
+    ).toHaveLength(1);
+    expect(document.querySelector(".animate-bounce")).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some((call) => call[1]?.method === "POST")).toBe(false);
   });
 });
