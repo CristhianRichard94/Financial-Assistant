@@ -30,6 +30,11 @@ Whenever the user requests a new feature or fix, do NOT stop after one implement
    - `security-engineer` — auth/access-control gaps, secret handling, injection risks, unsafe data exposure (e.g. missing RLS/access policies on new tables or storage), dependency/config risk.
    Run `security-engineer` on every feature/fix pass, not just ones that look security-sensitive — access-control and data-exposure gaps (e.g. a new table with no RLS) are easy to miss precisely when a change doesn't look security-related on the surface.
 
+   Keep reviews scoped and cheap:
+   - Point both reviewers at `git diff <base>...<branch>` as the primary source of truth, not "explore the codebase and figure out what changed."
+   - Trust `software-engineer`'s reported typecheck/build/test results — don't ask reviewers to re-run the full install/build/test cycle by default. A reviewer should only re-run a check itself if it suspects the report is wrong or needs to verify a specific fix.
+   - Scale the checklist to the diff's actual size and shape. A repo-wide grep for stale references, or a check across every doc file, is warranted when the diff deletes/renames things broadly (e.g. removing a package) — not for a small, localized fix.
+
 **5. Fix** — If either `qa-engineer` or `security-engineer` reports a blocking issue, send its exact findings back to `software-engineer` in the same worktree/branch. Do not summarize or soften either agent's findings — pass them through directly. If both report blocking issues, pass both through together.
 
 **6. Repeat** steps 4–5 until both `qa-engineer` and `security-engineer` report no blocking issues, or until 4 review rounds have happened.
