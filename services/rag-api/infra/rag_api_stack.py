@@ -103,23 +103,81 @@ class RagApiStack(Stack):
                 image=ecs.ContainerImage.from_asset(
                     str(REPO_ROOT),
                     file=DOCKERFILE_RELATIVE_PATH,
-                    # Without this, CDK's asset-staging copy of the build
-                    # context (which is the whole repo root - see the
-                    # REPO_ROOT comment above) recurses into this very
-                    # directory's own `cdk.out/` output, which is nested
-                    # inside the tree being copied, causing an unbounded
-                    # self-referential copy loop during `cdk synth`/`cdk
-                    # deploy`. There is no repo-root `.dockerignore` for
-                    # Docker itself to fall back on (the existing
+                    # Without an exclude list, CDK's asset-staging step
+                    # copies the *entire* repo root (since REPO_ROOT is the
+                    # build context - see the REPO_ROOT comment above) into
+                    # `cdk.out/asset.<hash>/` on every `cdk synth`/`cdk
+                    # deploy`. The Dockerfile only ever COPYs
+                    # `services/rag-api` and `services/rag-pipeline` (see
+                    # Dockerfile), so everything else here is dead weight -
+                    # and left unexcluded, it silently accumulated ~9G
+                    # across a handful of synths (multi-hundred-MB
+                    # `node_modules/`, `artifacts/`, even stray feature
+                    # worktrees under `.worktrees/`, duplicated into a new
+                    # asset dir each time the source hash changed) until the
+                    # codespace disk filled up. `services/rag-api/infra` in
+                    # particular must stay excluded regardless: it's nested
+                    # inside the tree being copied, so leaving it in would
+                    # make asset-staging recurse into its own `cdk.out/`
+                    # output, an unbounded self-referential copy loop.
+                    #
+                    # There is no repo-root `.dockerignore` for Docker
+                    # itself to fall back on (the existing
                     # `services/rag-api/.dockerignore` /
                     # `Dockerfile.dockerignore` files are scoped to a
                     # `services/rag-api`-rooted context, not this
-                    # REPO_ROOT-rooted one), so this must be excluded
-                    # explicitly here.
+                    # REPO_ROOT-rooted one), so every top-level entry that
+                    # isn't `services/` must be excluded explicitly here.
+                    #
+                    # `IgnoreMode.GLOB` (CDK's default here - no
+                    # `dockerIgnoreSupport` context flag is set) anchors a
+                    # bare pattern like `.venv` to the build-context root; it
+                    # does NOT match at every depth the way `.gitignore`
+                    # patterns do. So the per-service dev artifacts below
+                    # (each service has its own `.venv`, `.pytest_cache`,
+                    # etc. - e.g. services/rag-api/.venv is itself ~580MB)
+                    # need an explicit `**/` prefix, or they silently ride
+                    # along into the asset uncut.
                     exclude=[
-                        "services/rag-api/infra/cdk.out",
-                        "services/rag-api/infra/.venv",
+                        ".claude",
                         ".git",
+                        ".npmrc",
+                        ".replit",
+                        ".replitignore",
+                        ".venv",
+                        ".worktrees",
+                        "AI_USAGE.md",
+                        "BACKLOG.md",
+                        "CLAUDE.md",
+                        "README.md",
+                        "artifacts",
+                        "assets",
+                        "lib",
+                        "node_modules",
+                        "package.json",
+                        "pnpm-lock.yaml",
+                        "pnpm-workspace.yaml",
+                        "replit.md",
+                        "scripts",
+                        "tsconfig.base.json",
+                        "tsconfig.json",
+                        # Within services/, drop this stack's own CDK
+                        # tooling (see above) plus local dev artifacts not
+                        # needed in the image - mirrors
+                        # services/rag-api/.dockerignore, but with `**/`
+                        # since these live inside services/rag-api and
+                        # services/rag-pipeline, not at the build-context
+                        # root (see IgnoreMode.GLOB note above).
+                        "services/rag-api/infra",
+                        "**/__pycache__",
+                        "**/*.pyc",
+                        "**/*.pyo",
+                        "**/.venv",
+                        "**/.pytest_cache",
+                        "**/tests",
+                        "**/.env",
+                        "**/.env.local",
+                        "**/*.egg-info",
                     ],
                 ),
                 container_port=8000,
