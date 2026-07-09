@@ -4,30 +4,30 @@ AI-powered personal finance assistant that analyzes uploaded documents (PDFs, CS
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/finsight run dev` — run the Next.js frontend (port 23970)
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080)
+- `pnpm --filter @workspace/finsight run dev` — run the Next.js frontend + API (port 23970)
 - `pnpm run typecheck` — full typecheck across all packages
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
 - **Frontend**: Next.js 15 App Router, Tailwind CSS v4, TanStack Query, sonner, react-dropzone
-- **API**: Express 5 (handles all `/api/*` routes)
-- **State**: In-memory mock store in `artifacts/api-server/src/lib/finSightStore.ts`
-- Build: Next.js (frontend), esbuild (API server)
+- **API**: Next.js Route Handlers (`src/app/api/**`, handles all `/api/*` routes)
+- **State**: In-memory mock store in `artifacts/finsight/src/lib/store.ts`
+- Build: Next.js (frontend + API)
 
 ## Where things live
 
-- `artifacts/finsight/` — Next.js 15 App Router frontend
+- `artifacts/finsight/` — Next.js 15 App Router frontend + API
   - `src/app/` — pages: `/dashboard`, `/documents`, `/chat`
+  - `src/app/api/` — Route Handlers: `/api/documents`, `/api/chat/messages`, `/api/dashboard/*`, `/api/healthz`
   - `src/components/AppLayout.tsx` — shared sidebar nav (client component)
   - `src/components/views/` — DashboardView, DocumentsView, ChatView
   - `src/lib/utils.ts` — formatting helpers
-- `artifacts/api-server/src/routes/finsight.ts` — all FinSight API routes
-- `artifacts/api-server/src/lib/finSightStore.ts` — in-memory data store with mock data
+  - `src/lib/store.ts` — in-memory data store with mock data
 
 ## API Routes (all under `/api`)
 
+- `GET /api/healthz` — health check
 - `GET /api/documents` — list uploaded documents
 - `POST /api/documents` — upload a document (multipart/form-data)
 - `DELETE /api/documents/:id` — delete a document
@@ -38,10 +38,9 @@ AI-powered personal finance assistant that analyzes uploaded documents (PDFs, CS
 
 ## Architecture decisions
 
-- Next.js frontend at `/` handles routing; Express API server owns all `/api/*` paths via the shared reverse proxy
+- Next.js frontend at `/` handles routing; Next.js Route Handlers (`src/app/api/**`) own all `/api/*` paths — no separate API server
 - Documents and chat now proxy server-side to a real Python RAG backend (`services/rag-api/`) instead of the mock store — see "RAG backend" below. Dashboard summary/activity are still in-memory mocks.
-- It's unclear which of Next.js Route Handlers vs. the Express proxy is actually live in the deployed environment, so the RAG API proxy logic is mirrored in both `artifacts/finsight/src/app/api/**` and `artifacts/api-server/src/routes/finsight.ts` — keep both in sync when changing `/documents*` or `/chat/messages` routing (see the `pnpm-workspace` skill)
-- `finSightStore` (dashboard only) simulates mock in-memory data
+- `store.ts` (dashboard only) simulates mock in-memory data
 - Documents page auto-refetches every 2s while any document is in `pending` or `processing` state
 
 ## RAG backend (`services/rag-pipeline/`, `services/rag-api/`)
@@ -60,8 +59,7 @@ AI-powered personal finance assistant that analyzes uploaded documents (PDFs, CS
 
 ## Gotchas
 
-- The Express API server intercepts `/api/*` before Next.js in the deployed environment — this is why the RAG proxy logic is mirrored in both places, see above
-- To swap in a real database for dashboard data: replace `finSightStore.ts` with Drizzle-backed queries and provision a DB with `pnpm --filter @workspace/db run push`
+- To swap in a real database for dashboard data: replace `store.ts` with Drizzle-backed queries and provision a DB with `pnpm --filter @workspace/db run push`
 - `react-dropzone` requires `"use client"` — already applied in DocumentsView
 - Next.js dev server needs `PORT` env var and is started with `next dev -p $PORT`
 
@@ -71,5 +69,5 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Pointers
 
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and the `/api/*` dual-routing gotcha
+- See the `pnpm-workspace` skill for workspace structure and TypeScript setup
 - See the `rag-api` skill for the Python RAG backend's install/run/test/deploy commands

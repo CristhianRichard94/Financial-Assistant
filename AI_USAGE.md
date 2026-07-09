@@ -10,9 +10,9 @@ reconstructing them at the end.
 
 - pnpm workspace, Node.js, TypeScript
 - **Frontend**: Next.js 15 (App Router) — `artifacts/finsight/`
-- **API**: Express 5 — `artifacts/api-server/`, owns all `/api/*` routes behind the monorepo's reverse proxy
-- **Data**: in-memory mock store (`finSightStore.ts`) still backs dashboard summary/activity; a Drizzle + Postgres package (`lib/db/`) exists but isn't wired up yet
-- **RAG backend**: `services/rag-pipeline/` (Supabase/pgvector ingestion + similarity search, merged `f552192`) and `services/rag-api/` (FastAPI HTTP service wrapping it: `POST /upload`, `POST /query`, `GET /documents`, `DELETE /documents/{id}`) — documents and chat now proxy through to this real backend via server-side Next.js/Express routes instead of the mock store. AWS deploy artifacts (ECS Fargate + CDK) exist but were never applied — no AWS credentials in this environment.
+- **API**: Next.js Route Handlers — `artifacts/finsight/src/app/api/**`, own all `/api/*` routes; no separate Express server (the previously-mirrored `artifacts/api-server/` was dropped, see the 2026-07-09 log entry below)
+- **Data**: in-memory mock store (`artifacts/finsight/src/lib/store.ts`, renamed from `finSightStore.ts`) still backs dashboard summary/activity; a Drizzle + Postgres package (`lib/db/`) exists but isn't wired up yet
+- **RAG backend**: `services/rag-pipeline/` (Supabase/pgvector ingestion + similarity search, merged `f552192`) and `services/rag-api/` (FastAPI HTTP service wrapping it: `POST /upload`, `POST /query`, `GET /documents`, `DELETE /documents/{id}`) — documents and chat now proxy through to this real backend via server-side Next.js routes instead of the mock store. AWS deploy artifacts (ECS Fargate + CDK) exist but were never applied — no AWS credentials in this environment.
 
 ## Agents & Tools Used
 
@@ -350,6 +350,31 @@ Merged to `main` (`5190eda`, feature commit `827cf38`); worktree and
 `feature/openai-llm-switch` branch removed after merge.
 ```
 
+```
+### 2026-07-09 — Drop mirrored Express api-server (git worktree: feature/drop-api-server)
+**Tool:** Claude Code
+**Prompt:**
+> Remove the standalone Express `artifacts/api-server` package and consolidate all
+> `/api/*` handling into the existing Next.js Route Handlers in `artifacts/finsight`.
+
+**Output summary:** Backend-only change, so skipped straight to `software-engineer` per
+`CLAUDE.md`'s conditional design step. Deleted all 14 files under `artifacts/api-server/`
+(the whole Express service: `app.ts`, `index.ts`, `finSightStore.ts`, `logger.ts`,
+`ragApiClient.ts`, the `routes/` directory, build/deploy config). Ported the one route
+that only existed on the Express side — the health check — to
+`artifacts/finsight/src/app/api/healthz/route.ts` (plus `route.test.ts`), reusing the
+generated `HealthCheckResponse` schema from `@workspace/api-zod` instead of hand-rolling
+a new response shape. Updated `README.md`, `replit.md`, and the `pnpm-workspace`
+`.claude/skills/` doc to remove the dual-routing gotcha (Next.js vs. Express mirroring)
+that no longer applies now that there's a single API implementation. Removed
+`artifacts/api-server`'s workspace entry from `artifacts/finsight/package.json`/
+`pnpm-lock.yaml` and reinstalled to regenerate the lockfile without the dropped package.
+**Manual changes after:** none — this closes out the mirroring risk that caused the
+Multer-error-leak bug (2026-07-06 entry above) and the stale `LIMIT_UNEXPECTED_FILE`
+ticket in `BACKLOG.md`'s "Currently in flight" section, both of which only existed
+because the same route logic had to be kept in sync across two servers.
+```
+
 ## Claude Code Skills
 
 Two Skills added 2026-07-06 in `.claude/skills/`, both referenced from `replit.md`'s
@@ -357,7 +382,7 @@ Pointers section:
 
 | Skill | Covers |
 |---|---|
-| `pnpm-workspace` | Workspace layout, run/build/typecheck commands, and the `/api/*` dual-routing gotcha (Next.js Route Handlers vs. Express — mirror any API route change in both) |
+| `pnpm-workspace` | Workspace layout and run/build/typecheck commands (the `/api/*` dual-routing gotcha was removed 2026-07-09 once the Express `api-server` mirror was dropped) |
 | `rag-api` | Install/run/test/Docker/AWS-deploy commands for `services/rag-api` + `services/rag-pipeline`, so they don't need to be re-derived from the READMEs each session |
 
 ## Claude Code Subagents (`.claude/agents/`)

@@ -28,11 +28,11 @@ independent Python RAG backend.
 Browser
   │
   ▼
-Next.js 15 App Router (artifacts/finsight)  ──┐
-  │  /dashboard  /documents  /chat             │  in the deployed environment,
-  │                                            │  the Express server intercepts
-  ▼                                            │  /api/* first — both proxy
-Next.js API routes (src/app/api/**)  ◄─────────┘  layers are kept in sync
+Next.js 15 App Router (artifacts/finsight)
+  │  /dashboard  /documents  /chat
+  │
+  ▼
+Next.js API routes (src/app/api/**)
   │
   │ server-to-server only (RAG_API_BASE_URL + X-Internal-Api-Key)
   ▼
@@ -46,7 +46,7 @@ Supabase (Postgres + pgvector)
 ```
 
 - **Frontend**: Next.js 15 (App Router), Tailwind CSS v4, TanStack Query, `sonner` toasts, `react-dropzone` uploads, `next-themes` for light/dark mode.
-- **API server**: Express 5, owns all `/api/*` routes in the deployed environment.
+- **API**: Next.js Route Handlers (`src/app/api/**`), owns all `/api/*` routes.
 - **RAG backend**: a standalone Python service pair — `rag-pipeline` (ingestion/search library) and `rag-api` (FastAPI HTTP wrapper + Claude-powered answer synthesis) — with its own Supabase project and Python dependencies, decoupled from the rest of the monorepo.
 - **Dashboard data** (income/spending/savings summary and activity feed) is still served from an in-memory mock store; documents and chat are wired to the real RAG backend.
 
@@ -57,8 +57,7 @@ See [`replit.md`](./replit.md) for the day-to-day architecture-decisions log kep
 ```
 .
 ├── artifacts/
-│   ├── finsight/           Next.js 15 frontend (the app itself)
-│   └── api-server/         Express API server (mirrors the RAG proxy routes)
+│   └── finsight/           Next.js 15 frontend + API routes (the app itself)
 ├── lib/
 │   ├── db/                 Drizzle schema/client (@workspace/db)
 │   ├── api-spec/           OpenAPI spec + orval codegen config
@@ -106,9 +105,8 @@ uvicorn rag_api.main:app --reload --port 8000
 cd ../../artifacts/finsight
 cp .env.example .env.local   # RAG_API_BASE_URL + RAG_API_INTERNAL_KEY (must match rag-api's INTERNAL_API_KEY)
 
-# 4. Run the frontend (and, optionally, the Express API server)
+# 4. Run the frontend
 pnpm --filter @workspace/finsight run dev
-pnpm --filter @workspace/api-server run dev
 ```
 
 ## Environment variables
@@ -132,8 +130,7 @@ Run from the repository root unless noted:
 pnpm install                                       # install all workspace packages
 pnpm run typecheck                                 # typecheck every package in the workspace
 pnpm run build                                      # typecheck + build every package
-pnpm --filter @workspace/finsight run dev           # frontend, http://localhost:$PORT
-pnpm --filter @workspace/api-server run dev         # Express API server, port 8080
+pnpm --filter @workspace/finsight run dev           # frontend + API, http://localhost:$PORT
 ```
 
 Python services (from within `services/rag-pipeline` or `services/rag-api`,
@@ -147,12 +144,11 @@ uvicorn rag_api.main:app --reload --port 8000       # run rag-api locally
 
 ## API routes
 
-All under `/api`, served by the Express `api-server` in the deployed
-environment (mirrored in Next.js route handlers — see the `pnpm-workspace`
-Claude Code skill for why both exist and must be kept in sync):
+All under `/api`, served by Next.js Route Handlers (`src/app/api/**`):
 
 | Method | Path | Description |
 | --- | --- | --- |
+| `GET` | `/api/healthz` | Health check |
 | `GET` | `/api/documents` | List uploaded documents |
 | `POST` | `/api/documents` | Upload a document (`multipart/form-data`) |
 | `DELETE` | `/api/documents/:id` | Delete a document |
@@ -170,9 +166,9 @@ for what happens behind that proxy.
 - **RAG pipeline / RAG API**: `pytest` in each service's virtualenv — all
   tests mock external calls (Supabase, OpenAI), so no live credentials are
   needed to run the suite.
-- **Frontend / API server**: no automated test suite yet — `pnpm run
-  typecheck` across the workspace is the current safety net, backed up by
-  manual verification in a running dev server.
+- **Frontend / API routes**: `vitest` unit tests alongside the Next.js Route
+  Handlers (`route.test.ts` files), plus `pnpm run typecheck` across the
+  workspace, backed up by manual verification in a running dev server.
 - Live end-to-end testing against real Supabase/OpenAI credentials and the
   actual AWS deployment have not been run in this environment — see
   [`BACKLOG.md`](./BACKLOG.md) for exactly what's verified vs. what still
@@ -180,8 +176,8 @@ for what happens behind that proxy.
 
 ## Deployment status
 
-- The frontend and API server run locally; no live production deployment
-  exists yet.
+- The frontend (with its Next.js API routes) runs locally; no live
+  production deployment exists yet.
 - AWS deployment artifacts for `rag-api` (ECS Fargate + CDK) are built and
   ready but have **not** been applied — no AWS credentials in this
   development environment. See
