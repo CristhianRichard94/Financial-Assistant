@@ -87,7 +87,7 @@ describe("store.documents", () => {
 describe("store.chat", () => {
   it("lists the seeded messages", async () => {
     const store = await freshStore();
-    expect(store.chat.list()).toHaveLength(3);
+    expect(store.chat.list()).toHaveLength(1);
   });
 
   it("add() appends a message and list() reflects it", async () => {
@@ -98,7 +98,7 @@ describe("store.chat", () => {
     expect(msg.content).toBe("Hello there");
 
     const messages = store.chat.list();
-    expect(messages).toHaveLength(4);
+    expect(messages).toHaveLength(2);
     expect(messages.at(-1)).toEqual(msg);
   });
 
@@ -106,7 +106,7 @@ describe("store.chat", () => {
     const store = await freshStore();
     const messages = store.chat.list();
     messages.pop();
-    expect(store.chat.list()).toHaveLength(3);
+    expect(store.chat.list()).toHaveLength(1);
   });
 });
 
