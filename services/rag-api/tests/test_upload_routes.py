@@ -8,8 +8,16 @@ import io
 import pytest
 from fastapi import HTTPException
 
+from rag_pipeline.config import Settings as PipelineSettings
+
 from rag_api.config import RagApiSettings
 from rag_api.routes.documents import _sanitize_filename, _stream_multipart_file
+
+_FAKE_PIPELINE_SETTINGS = PipelineSettings(
+    supabase_url="https://example.supabase.co",
+    supabase_service_key="service-role-key",
+    openai_api_key="sk-test-key",
+)
 
 
 def test_upload_document_returns_201_with_pending_document(client, mocker):
@@ -35,6 +43,39 @@ def test_upload_document_returns_201_with_pending_document(client, mocker):
     assert body["status"] == "pending"
     assert body["size"] > 0
     assert "uploadedAt" in body
+
+
+def test_upload_document_scopes_creation_and_ingestion_to_the_requesting_user(
+    client, user_id, mocker
+):
+    create_pending_document = mocker.patch(
+        "rag_pipeline.create_pending_document", return_value="new-doc-id"
+    )
+    # The background task loads pipeline settings independently of the
+    # already-mocked rag_api_settings_env fixture (it reads SUPABASE_URL /
+    # SUPABASE_SERVICE_KEY, not just OPENAI_API_KEY/INTERNAL_API_KEY), so it
+    # must be mocked too for process_document to actually be reached here -
+    # otherwise load_pipeline_settings() itself raises first and this test
+    # would only be exercising the (separately-tested) mark_document_failed
+    # fallback path instead of the user_id threading this test cares about.
+    mocker.patch(
+        "rag_api.routes.documents.load_pipeline_settings",
+        return_value=_FAKE_PIPELINE_SETTINGS,
+    )
+    process_document = mocker.patch("rag_pipeline.process_document")
+
+    response = client.post(
+        "/upload",
+        files={"file": ("statement.csv", io.BytesIO(b"a,b\n1,2\n"), "text/csv")},
+    )
+
+    assert response.status_code == 201
+    create_pending_document.assert_called_once_with(
+        "statement.csv", user_id, metadata={"size_bytes": 8}
+    )
+    process_document.assert_called_once_with(
+        "new-doc-id", mocker.ANY, user_id, settings=_FAKE_PIPELINE_SETTINGS
+    )
 
 
 def test_upload_document_accepts_csv(client, mocker):

@@ -38,6 +38,13 @@ Required env vars: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `OPENAI_API_KEY`
 (shared secret checked via `X-Internal-Api-Key` on every route except
 `/healthz` — see `rag_api/auth.py`).
 
+Every route except `/healthz` also requires an `X-User-Id` header (the
+caller's Supabase Auth `auth.users.id`, a UUID) — rag-api trusts this header
+the same way it trusts `X-Internal-Api-Key` (see `rag_api/auth.py`'s
+docstring) and threads it through every `rag_pipeline` call to scope reads/
+writes to that user. It's not itself an env var; the trusted Next.js caller
+sends it per-request based on the caller's already-verified session.
+
 Point the frontend at it via `artifacts/finsight/.env.local`:
 `RAG_API_BASE_URL=http://localhost:8000`, `RAG_API_INTERNAL_KEY=<same value>`.
 
@@ -81,5 +88,8 @@ cd services/rag-api/infra && pip install -r requirements.txt && cdk synth
 
 - `BackgroundTasks` ingestion is not persisted/retried — a killed process
   mid-ingestion leaves a document stuck in `"processing"`.
-- No per-user auth, no CORS — this service is meant to sit behind network
-  isolation (internal ALB), never called directly from a browser.
+- No CORS — this service is meant to sit behind network isolation (internal
+  ALB), never called directly from a browser. Multi-tenancy is enforced via
+  the required `X-User-Id` header (see above), which rag-api trusts as
+  asserted by its one legitimate caller (the Next.js server) rather than
+  independently verifying a session itself.

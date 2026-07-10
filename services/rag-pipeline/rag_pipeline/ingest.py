@@ -23,10 +23,11 @@ class IngestResult:
 
 def create_pending_document(
     filename: str,
+    user_id: str,
     metadata: dict[str, Any] | None = None,
     settings: Settings | None = None,
 ) -> str:
-    """Insert a `documents` row and return its new id.
+    """Insert a `documents` row owned by `user_id` and return its new id.
 
     Status is left unset so the table's own default (`'pending'`, see
     sql/002_create_documents_table.sql) applies. This is split out from
@@ -42,6 +43,7 @@ def create_pending_document(
         .insert(
             {
                 "filename": filename,
+                "user_id": user_id,
                 "metadata": metadata or {},
             }
         )
@@ -53,6 +55,7 @@ def create_pending_document(
 def process_document(
     document_id: str,
     path: str | Path,
+    user_id: str,
     settings: Settings | None = None,
 ) -> IngestResult:
     """Parse, chunk, embed, and store a local file for an existing document row.
@@ -93,6 +96,7 @@ def process_document(
         chunk_rows = [
             {
                 "document_id": document_id,
+                "user_id": user_id,
                 "chunk_text": chunk.text,
                 "chunk_index": chunk.index,
                 "embedding": embedding,
@@ -146,10 +150,12 @@ def mark_document_failed(document_id: str, settings: Settings | None = None) -> 
 
 def ingest_document(
     path: str | Path,
+    user_id: str,
     metadata: dict[str, Any] | None = None,
     settings: Settings | None = None,
 ) -> IngestResult:
-    """Ingest a single local PDF or CSV file into Supabase, end to end.
+    """Ingest a single local PDF or CSV file into Supabase, end to end, owned
+    by `user_id`.
 
     Thin wrapper around `create_pending_document` + `process_document`, kept
     for backwards compatibility with existing callers (e.g.
@@ -161,5 +167,7 @@ def ingest_document(
     if not path.exists():
         raise FileNotFoundError(f"No such file: {path}")
 
-    document_id = create_pending_document(path.name, metadata=metadata, settings=settings)
-    return process_document(document_id, path, settings=settings)
+    document_id = create_pending_document(
+        path.name, user_id, metadata=metadata, settings=settings
+    )
+    return process_document(document_id, path, user_id, settings=settings)

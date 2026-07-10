@@ -38,6 +38,18 @@ def test_query_returns_answer_and_sources(client, mocker):
     assert body["sources"] == [{"filename": "statement.pdf", "similarity": 0.87}]
 
 
+def test_query_scopes_search_to_the_requesting_user(client, user_id, mocker):
+    search = mocker.patch("rag_pipeline.search", return_value=[_make_result()])
+    mocker.patch(
+        "rag_api.openai_client.ask_openai",
+        return_value=("An answer.", []),
+    )
+
+    client.post("/query", json={"question": "How much did I spend?"})
+
+    search.assert_called_once_with("How much did I spend?", user_id, k=5)
+
+
 def test_query_rejects_empty_question(client):
     response = client.post("/query", json={"question": ""})
 

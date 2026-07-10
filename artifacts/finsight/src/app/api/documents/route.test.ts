@@ -10,8 +10,8 @@
 // back as a plain string instead of a File). Running this file under the
 // plain "node" environment instead avoids that mismatch, since this route
 // handler doesn't touch the DOM anyway.
-import { describe, it, expect, vi, afterEach } from "vitest";
-import { NextRequest } from "next/server";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { NextRequest, NextResponse } from "next/server";
 import { GET, POST } from "@/app/api/documents/route";
 import { RagApiError } from "@/lib/ragApiClient";
 
@@ -26,8 +26,14 @@ vi.mock("@/lib/ragApiClient", async () => {
   };
 });
 
-import { listDocuments, uploadDocument } from "@/lib/ragApiClient";
+vi.mock("@/lib/auth/requireUser", () => ({
+  requireUser: vi.fn(),
+}));
 
+import { listDocuments, uploadDocument } from "@/lib/ragApiClient";
+import { requireUser } from "@/lib/auth/requireUser";
+
+const TEST_USER = { id: "user-1", email: "user@example.com" };
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 function makeUploadRequest(options: {
@@ -68,8 +74,25 @@ function makeUploadRequest(options: {
 }
 
 describe("GET /api/documents", () => {
+  beforeEach(() => {
+    vi.mocked(requireUser).mockResolvedValue({ user: TEST_USER as never });
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("returns 401 when there is no session", async () => {
+    vi.mocked(requireUser).mockResolvedValue({
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    });
+
+    const res = await GET();
+    const body = await res.json();
+
+    expect(res.status).toBe(401);
+    expect(body).toEqual({ error: "Unauthorized" });
+    expect(listDocuments).not.toHaveBeenCalled();
   });
 
   it("returns documents from rag-api on success", async () => {
@@ -81,6 +104,7 @@ describe("GET /api/documents", () => {
 
     expect(res.status).toBe(200);
     expect(body).toEqual(docs);
+    expect(listDocuments).toHaveBeenCalledWith(TEST_USER.id);
   });
 
   it("maps a RagApiError status to the response status", async () => {
@@ -103,8 +127,26 @@ describe("GET /api/documents", () => {
 });
 
 describe("POST /api/documents", () => {
+  beforeEach(() => {
+    vi.mocked(requireUser).mockResolvedValue({ user: TEST_USER as never });
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("returns 401 when there is no session", async () => {
+    vi.mocked(requireUser).mockResolvedValue({
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    });
+    const req = makeUploadRequest({ formData: new FormData() });
+
+    const res = await POST(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(401);
+    expect(body).toEqual({ error: "Unauthorized" });
+    expect(uploadDocument).not.toHaveBeenCalled();
   });
 
   it("returns 400 when no file is provided", async () => {
@@ -182,6 +224,7 @@ describe("POST /api/documents", () => {
     expect(res.status).toBe(201);
     expect(body).toEqual(createdDoc);
     expect(uploadDocument).toHaveBeenCalledTimes(1);
+    expect(uploadDocument).toHaveBeenCalledWith(expect.any(FormData), TEST_USER.id);
   });
 
   it("maps a RagApiError from uploadDocument to the response status", async () => {

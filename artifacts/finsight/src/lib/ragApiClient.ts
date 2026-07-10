@@ -82,9 +82,17 @@ function getInternalApiKey(): string {
  * rag_api/auth.py. This is the primary access control for rag-api: its ALB
  * is public (fronted by CloudFront), so there is no network isolation
  * backing this up. getBaseUrl() enforces HTTPS so this header is never
- * sent in cleartext. */
-function internalAuthHeaders(): Record<string, string> {
-  return { "X-Internal-Api-Key": getInternalApiKey() };
+ * sent in cleartext.
+ *
+ * Every request must also carry `X-User-Id`, the verified Supabase Auth
+ * user id of the caller (see rag_api/auth.py's `require_user_id`). rag-api
+ * trusts this header only because it is unreachable except via the shared
+ * secret above, which only this Next.js server holds - by the time any
+ * caller of this module reaches here, it must already have verified the
+ * real session itself (see `src/lib/auth/requireUser.ts`). Never call these
+ * functions with a `userId` that hasn't been independently verified. */
+function internalAuthHeaders(userId: string): Record<string, string> {
+  return { "X-Internal-Api-Key": getInternalApiKey(), "X-User-Id": userId };
 }
 
 async function extractErrorMessage(res: Response): Promise<string> {
@@ -103,37 +111,37 @@ async function assertOk(res: Response, action: string): Promise<void> {
   }
 }
 
-export async function listDocuments(): Promise<Document[]> {
+export async function listDocuments(userId: string): Promise<Document[]> {
   const res = await fetch(`${getBaseUrl()}/documents`, {
     cache: "no-store",
-    headers: internalAuthHeaders(),
+    headers: internalAuthHeaders(userId),
   });
   await assertOk(res, "list documents");
   return res.json();
 }
 
-export async function uploadDocument(formData: FormData): Promise<Document> {
+export async function uploadDocument(formData: FormData, userId: string): Promise<Document> {
   const res = await fetch(`${getBaseUrl()}/upload`, {
     method: "POST",
-    headers: internalAuthHeaders(),
+    headers: internalAuthHeaders(userId),
     body: formData,
   });
   await assertOk(res, "upload document");
   return res.json();
 }
 
-export async function deleteDocument(id: string): Promise<void> {
+export async function deleteDocument(id: string, userId: string): Promise<void> {
   const res = await fetch(`${getBaseUrl()}/documents/${id}`, {
     method: "DELETE",
-    headers: internalAuthHeaders(),
+    headers: internalAuthHeaders(userId),
   });
   await assertOk(res, "delete document");
 }
 
-export async function queryRag(question: string): Promise<QueryResult> {
+export async function queryRag(question: string, userId: string): Promise<QueryResult> {
   const res = await fetch(`${getBaseUrl()}/query`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...internalAuthHeaders() },
+    headers: { "Content-Type": "application/json", ...internalAuthHeaders(userId) },
     body: JSON.stringify({ question }),
   });
   await assertOk(res, "query documents");

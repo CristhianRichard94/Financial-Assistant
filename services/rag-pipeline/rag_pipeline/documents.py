@@ -32,22 +32,31 @@ def _row_to_record(row: dict[str, Any]) -> DocumentRecord:
     )
 
 
-def list_documents(settings: Settings | None = None) -> list[DocumentRecord]:
-    """Return all documents, most recently uploaded first."""
+def list_documents(user_id: str, settings: Settings | None = None) -> list[DocumentRecord]:
+    """Return all documents owned by `user_id`, most recently uploaded first."""
     settings = settings or load_settings()
     supabase = get_supabase_client(settings.supabase_url, settings.supabase_service_key)
 
     response = (
         supabase.table("documents")
         .select("*")
+        .eq("user_id", user_id)
         .order("upload_date", desc=True)
         .execute()
     )
     return [_row_to_record(row) for row in response.data]
 
 
-def get_document(document_id: str, settings: Settings | None = None) -> DocumentRecord | None:
-    """Return a single document by id, or None if it doesn't exist."""
+def get_document(
+    document_id: str, user_id: str, settings: Settings | None = None
+) -> DocumentRecord | None:
+    """Return a single document by id, or None if it doesn't exist or isn't
+    owned by `user_id`.
+
+    A document owned by a different user is deliberately indistinguishable
+    from one that doesn't exist at all - callers must never be able to infer
+    that a given id belongs to someone else.
+    """
     settings = settings or load_settings()
     supabase = get_supabase_client(settings.supabase_url, settings.supabase_service_key)
 
@@ -55,6 +64,7 @@ def get_document(document_id: str, settings: Settings | None = None) -> Document
         supabase.table("documents")
         .select("*")
         .eq("id", document_id)
+        .eq("user_id", user_id)
         .limit(1)
         .execute()
     )
@@ -63,8 +73,10 @@ def get_document(document_id: str, settings: Settings | None = None) -> Document
     return _row_to_record(response.data[0])
 
 
-def delete_document(document_id: str, settings: Settings | None = None) -> bool:
-    """Delete a document by id. Returns True if a row was deleted, False otherwise.
+def delete_document(document_id: str, user_id: str, settings: Settings | None = None) -> bool:
+    """Delete a document by id, scoped to `user_id`. Returns True if a row was
+    deleted, False otherwise (including when the document exists but is
+    owned by a different user - indistinguishable from "doesn't exist").
 
     Deleting a `documents` row cascades to its `document_chunks` rows (see
     `on delete cascade` in sql/003_create_document_chunks_table.sql).
@@ -72,5 +84,11 @@ def delete_document(document_id: str, settings: Settings | None = None) -> bool:
     settings = settings or load_settings()
     supabase = get_supabase_client(settings.supabase_url, settings.supabase_service_key)
 
-    response = supabase.table("documents").delete().eq("id", document_id).execute()
+    response = (
+        supabase.table("documents")
+        .delete()
+        .eq("id", document_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
     return len(response.data) > 0

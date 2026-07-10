@@ -17,6 +17,7 @@ Usage:
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -34,6 +35,13 @@ SAMPLE_CSV = SAMPLE_DIR / "sample_transactions.csv"
 
 TEST_QUERY = "How should I split my income between needs, wants, and savings?"
 TOP_K = 5
+
+# Placeholder owner for this manual sanity-check script. Must be a real row
+# in auth.users for the foreign key on documents.user_id /
+# document_chunks.user_id to succeed - create one (e.g. via Supabase Auth's
+# "Add user" in the dashboard) and set TEST_USER_ID in the environment to its
+# id if the default below doesn't exist in the target project.
+TEST_USER_ID = os.environ.get("TEST_USER_ID", "00000000-0000-0000-0000-000000000001")
 
 
 def main() -> int:
@@ -62,7 +70,7 @@ def main() -> int:
     embedding_dimensions = None
     for path in (SAMPLE_PDF, SAMPLE_CSV):
         try:
-            result = ingest_document(path, settings=settings)
+            result = ingest_document(path, TEST_USER_ID, settings=settings)
         except Exception as error:  # noqa: BLE001 - surface any failure clearly
             print(f"Failed to ingest {path.name}: {error}")
             return 1
@@ -85,7 +93,7 @@ def main() -> int:
     print()
     print(f'=== Query: "{TEST_QUERY}" ===')
     try:
-        results = search(TEST_QUERY, k=TOP_K, settings=settings)
+        results = search(TEST_QUERY, TEST_USER_ID, k=TOP_K, settings=settings)
     except Exception as error:  # noqa: BLE001
         print(f"Search failed: {error}")
         return 1

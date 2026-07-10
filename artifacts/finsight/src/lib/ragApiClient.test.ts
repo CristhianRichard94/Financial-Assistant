@@ -9,6 +9,7 @@ import {
 
 const BASE_URL = "http://localhost:8000";
 const INTERNAL_KEY = "test-key";
+const USER_ID = "11111111-1111-4111-8111-111111111111";
 
 function stubEnv() {
   vi.stubEnv("RAG_API_BASE_URL", BASE_URL);
@@ -31,21 +32,21 @@ describe("ragApiClient env var validation", () => {
     vi.stubEnv("RAG_API_BASE_URL", "");
     vi.stubEnv("RAG_API_INTERNAL_KEY", INTERNAL_KEY);
 
-    await expect(listDocuments()).rejects.toThrow(/RAG_API_BASE_URL is not set/);
+    await expect(listDocuments(USER_ID)).rejects.toThrow(/RAG_API_BASE_URL is not set/);
   });
 
   it("throws when RAG_API_INTERNAL_KEY is not set", async () => {
     vi.stubEnv("RAG_API_BASE_URL", BASE_URL);
     vi.stubEnv("RAG_API_INTERNAL_KEY", "");
 
-    await expect(listDocuments()).rejects.toThrow(/RAG_API_INTERNAL_KEY is not set/);
+    await expect(listDocuments(USER_ID)).rejects.toThrow(/RAG_API_INTERNAL_KEY is not set/);
   });
 
   it("throws when RAG_API_BASE_URL is a non-local HTTP host", async () => {
     vi.stubEnv("RAG_API_BASE_URL", "http://example.com");
     vi.stubEnv("RAG_API_INTERNAL_KEY", INTERNAL_KEY);
 
-    await expect(listDocuments()).rejects.toThrow(/must use HTTPS/);
+    await expect(listDocuments(USER_ID)).rejects.toThrow(/must use HTTPS/);
   });
 
   it("accepts an https:// RAG_API_BASE_URL", async () => {
@@ -53,7 +54,7 @@ describe("ragApiClient env var validation", () => {
     vi.stubEnv("RAG_API_INTERNAL_KEY", INTERNAL_KEY);
     const fetchMock = mockFetchOnce({ ok: true, json: async () => [] });
 
-    await expect(listDocuments()).resolves.toEqual([]);
+    await expect(listDocuments(USER_ID)).resolves.toEqual([]);
     expect(fetchMock).toHaveBeenCalledWith(
       "https://rag-api.example.cloudfront.net/documents",
       expect.anything()
@@ -65,7 +66,7 @@ describe("ragApiClient env var validation", () => {
     vi.stubEnv("RAG_API_INTERNAL_KEY", INTERNAL_KEY);
     const fetchMock = mockFetchOnce({ ok: true, json: async () => [] });
 
-    await expect(listDocuments()).resolves.toEqual([]);
+    await expect(listDocuments(USER_ID)).resolves.toEqual([]);
     expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/documents", expect.anything());
   });
 
@@ -74,7 +75,7 @@ describe("ragApiClient env var validation", () => {
     vi.stubEnv("RAG_API_INTERNAL_KEY", INTERNAL_KEY);
     const fetchMock = mockFetchOnce({ ok: true, json: async () => [] });
 
-    await expect(listDocuments()).resolves.toEqual([]);
+    await expect(listDocuments(USER_ID)).resolves.toEqual([]);
     expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8000/documents", expect.anything());
   });
 });
@@ -94,13 +95,13 @@ describe("ragApiClient requests", () => {
       const docs = [{ id: "1", name: "a.pdf" }];
       const fetchMock = mockFetchOnce({ ok: true, json: async () => docs });
 
-      const result = await listDocuments();
+      const result = await listDocuments(USER_ID);
 
       expect(result).toEqual(docs);
       expect(fetchMock).toHaveBeenCalledWith(
         `${BASE_URL}/documents`,
         expect.objectContaining({
-          headers: { "X-Internal-Api-Key": INTERNAL_KEY },
+          headers: { "X-Internal-Api-Key": INTERNAL_KEY, "X-User-Id": USER_ID },
         })
       );
     });
@@ -113,7 +114,7 @@ describe("ragApiClient requests", () => {
         json: async () => ({ detail: "db down" }),
       });
 
-      await expect(listDocuments()).rejects.toMatchObject({
+      await expect(listDocuments(USER_ID)).rejects.toMatchObject({
         name: "RagApiError",
         status: 500,
         message: "Failed to list documents: db down",
@@ -128,7 +129,7 @@ describe("ragApiClient requests", () => {
         json: async () => ({ error: "bad input" }),
       });
 
-      await expect(listDocuments()).rejects.toMatchObject({
+      await expect(listDocuments(USER_ID)).rejects.toMatchObject({
         message: "Failed to list documents: bad input",
       });
     });
@@ -141,7 +142,7 @@ describe("ragApiClient requests", () => {
         json: async () => ({}),
       });
 
-      await expect(listDocuments()).rejects.toMatchObject({
+      await expect(listDocuments(USER_ID)).rejects.toMatchObject({
         message: "Failed to list documents: Bad Gateway",
       });
     });
@@ -156,7 +157,7 @@ describe("ragApiClient requests", () => {
         },
       });
 
-      await expect(listDocuments()).rejects.toMatchObject({
+      await expect(listDocuments(USER_ID)).rejects.toMatchObject({
         message: "Failed to list documents: Service Unavailable",
       });
     });
@@ -168,14 +169,14 @@ describe("ragApiClient requests", () => {
       const fetchMock = mockFetchOnce({ ok: true, json: async () => doc });
       const form = new FormData();
 
-      const result = await uploadDocument(form);
+      const result = await uploadDocument(form, USER_ID);
 
       expect(result).toEqual(doc);
       expect(fetchMock).toHaveBeenCalledWith(
         `${BASE_URL}/upload`,
         expect.objectContaining({
           method: "POST",
-          headers: { "X-Internal-Api-Key": INTERNAL_KEY },
+          headers: { "X-Internal-Api-Key": INTERNAL_KEY, "X-User-Id": USER_ID },
           body: form,
         })
       );
@@ -189,7 +190,7 @@ describe("ragApiClient requests", () => {
         json: async () => ({ detail: "file too large" }),
       });
 
-      await expect(uploadDocument(new FormData())).rejects.toBeInstanceOf(RagApiError);
+      await expect(uploadDocument(new FormData(), USER_ID)).rejects.toBeInstanceOf(RagApiError);
     });
   });
 
@@ -197,13 +198,13 @@ describe("ragApiClient requests", () => {
     it("issues a DELETE request", async () => {
       const fetchMock = mockFetchOnce({ ok: true, json: async () => ({}) });
 
-      await deleteDocument("abc");
+      await deleteDocument("abc", USER_ID);
 
       expect(fetchMock).toHaveBeenCalledWith(
         `${BASE_URL}/documents/abc`,
         expect.objectContaining({
           method: "DELETE",
-          headers: { "X-Internal-Api-Key": INTERNAL_KEY },
+          headers: { "X-Internal-Api-Key": INTERNAL_KEY, "X-User-Id": USER_ID },
         })
       );
     });
@@ -216,7 +217,7 @@ describe("ragApiClient requests", () => {
         json: async () => ({ detail: "not found" }),
       });
 
-      await expect(deleteDocument("missing")).rejects.toMatchObject({
+      await expect(deleteDocument("missing", USER_ID)).rejects.toMatchObject({
         name: "RagApiError",
         status: 404,
       });
@@ -228,7 +229,7 @@ describe("ragApiClient requests", () => {
       const queryResult = { answer: "You spent $100", sources: [] };
       const fetchMock = mockFetchOnce({ ok: true, json: async () => queryResult });
 
-      const result = await queryRag("How much did I spend?");
+      const result = await queryRag("How much did I spend?", USER_ID);
 
       expect(result).toEqual(queryResult);
       expect(fetchMock).toHaveBeenCalledWith(
@@ -238,6 +239,7 @@ describe("ragApiClient requests", () => {
           headers: {
             "Content-Type": "application/json",
             "X-Internal-Api-Key": INTERNAL_KEY,
+            "X-User-Id": USER_ID,
           },
           body: JSON.stringify({ question: "How much did I spend?" }),
         })
@@ -252,7 +254,7 @@ describe("ragApiClient requests", () => {
         json: async () => ({}),
       });
 
-      await expect(queryRag("question")).rejects.toBeInstanceOf(RagApiError);
+      await expect(queryRag("question", USER_ID)).rejects.toBeInstanceOf(RagApiError);
     });
   });
 });

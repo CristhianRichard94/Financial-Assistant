@@ -80,16 +80,6 @@ const documents: Document[] = [
   },
 ];
 
-const chatMessages: ChatMessage[] = [
-  {
-    id: nanoid(),
-    role: "assistant",
-    content:
-      "Hello! I'm your FinSight assistant. I've analyzed your uploaded documents and I'm ready to help. What would you like to know about your finances?",
-    timestamp: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-  },
-];
-
 export const store = {
   documents: {
     list: (): Document[] => [...documents],
@@ -118,19 +108,6 @@ export const store = {
       if (idx === -1) return false;
       documents.splice(idx, 1);
       return true;
-    },
-  },
-  chat: {
-    list: (): ChatMessage[] => [...chatMessages],
-    add: (role: "user" | "assistant", content: string): ChatMessage => {
-      const msg: ChatMessage = {
-        id: nanoid(),
-        role,
-        content,
-        timestamp: new Date().toISOString(),
-      };
-      chatMessages.push(msg);
-      return msg;
     },
   },
   dashboard: {

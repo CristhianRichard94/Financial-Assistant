@@ -22,7 +22,7 @@ from python_multipart.exceptions import MultipartParseError
 from python_multipart.multipart import parse_options_header
 from rag_pipeline.config import load_settings as load_pipeline_settings
 
-from rag_api.auth import require_internal_api_key
+from rag_api.auth import require_internal_api_key, require_user_id
 from rag_api.config import RagApiSettings, load_rag_api_settings
 from rag_api.schemas import DocumentOut
 from rag_api.status_mapping import document_record_to_out, infer_document_type
@@ -227,7 +227,7 @@ async def _stream_multipart_file(
     return file_state.filename, bytes(file_state.buffer)
 
 
-def _run_ingestion(document_id: str, tmp_path: str) -> None:
+def _run_ingestion(document_id: str, tmp_path: str, user_id: str) -> None:
     """Background task: parse/chunk/embed/store the uploaded file.
 
     `process_document` marks its own document row "failed" for failures that
@@ -241,7 +241,9 @@ def _run_ingestion(document_id: str, tmp_path: str) -> None:
     """
     try:
         pipeline_settings = load_pipeline_settings()
-        rag_pipeline.process_document(document_id, tmp_path, settings=pipeline_settings)
+        rag_pipeline.process_document(
+            document_id, tmp_path, user_id, settings=pipeline_settings
+        )
     except Exception:
         logger.exception("Background ingestion failed for document %s", document_id)
         try:
@@ -260,9 +262,9 @@ def _run_ingestion(document_id: str, tmp_path: str) -> None:
 
 
 @router.get("/documents", response_model=list[DocumentOut])
-def get_documents() -> list[DocumentOut]:
+def get_documents(user_id: str = Depends(require_user_id)) -> list[DocumentOut]:
     try:
-        records = rag_pipeline.list_documents()
+        records = rag_pipeline.list_documents(user_id)
     except Exception:
         logger.exception("Failed to list documents")
         raise HTTPException(
@@ -276,6 +278,7 @@ def get_documents() -> list[DocumentOut]:
 async def upload_document(
     request: Request,
     background_tasks: BackgroundTasks,
+    user_id: str = Depends(require_user_id),
 ) -> DocumentOut:
     # Deliberately does not declare `file: UploadFile = File(...)` - see
     # `_stream_multipart_file`'s docstring for why. The request body is
@@ -288,7 +291,7 @@ async def upload_document(
 
     try:
         document_id = rag_pipeline.create_pending_document(
-            filename, metadata={"size_bytes": len(contents)}
+            filename, user_id, metadata={"size_bytes": len(contents)}
         )
     except Exception:
         logger.exception("Failed to create document record")
@@ -302,7 +305,7 @@ async def upload_document(
         tmp_file.write(contents)
         tmp_path = tmp_file.name
 
-    background_tasks.add_task(_run_ingestion, document_id, tmp_path)
+    background_tasks.add_task(_run_ingestion, document_id, tmp_path, user_id)
 
     return DocumentOut(
         id=document_id,
@@ -315,9 +318,9 @@ async def upload_document(
 
 
 @router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
-def remove_document(document_id: str) -> None:
+def remove_document(document_id: str, user_id: str = Depends(require_user_id)) -> None:
     try:
-        deleted = rag_pipeline.delete_document(document_id)
+        deleted = rag_pipeline.delete_document(document_id, user_id)
     except Exception:
         logger.exception("Failed to delete document %s", document_id)
         raise HTTPException(
