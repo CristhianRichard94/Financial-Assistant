@@ -85,21 +85,8 @@ const chatMessages: ChatMessage[] = [
     id: nanoid(),
     role: "assistant",
     content:
-      "Hello! I'm your FinSight assistant. I've analyzed your uploaded documents and I'm ready to answer questions about your finances. What would you like to know?",
+      "Hello! I'm your FinSight assistant. I've analyzed your uploaded documents and I'm ready to help. What would you like to know about your finances?",
     timestamp: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-  },
-  {
-    id: nanoid(),
-    role: "user",
-    content: "What are my biggest spending categories this month?",
-    timestamp: new Date(Date.now() - 9 * 60 * 1000).toISOString(),
-  },
-  {
-    id: nanoid(),
-    role: "assistant",
-    content:
-      "Based on your uploaded documents, your top 3 spending categories are:\n\n1. **Housing** — $2,100 (38% of spending)\n2. **Groceries & Dining** — $680 (12%)\n3. **Transportation** — $420 (8%)\n\nOverall, your spending looks healthy. Would you like tips on where you might be able to save?",
-    timestamp: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
   },
 ];
 
