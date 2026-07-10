@@ -12,6 +12,7 @@ independent Python RAG backend.
 ## Contents
 
 - [Architecture](#architecture)
+- [Authentication](#authentication)
 - [Repository layout](#repository-layout)
 - [Prerequisites](#prerequisites)
 - [Quick start](#quick-start)
@@ -51,6 +52,16 @@ Supabase (Postgres + pgvector)
 - **Dashboard data** (income/spending/savings summary and activity feed) is still served from an in-memory mock store; documents and chat are wired to the real RAG backend.
 
 See [`replit.md`](./replit.md) for the day-to-day architecture-decisions log kept alongside this codebase.
+
+## Authentication
+
+Sign-in is Google OAuth via **Supabase Auth**:
+
+- `/login` — sign-in page, redirects to Supabase's Google OAuth flow
+- `/auth/callback` — OAuth callback route handler that exchanges the code for a session
+- `(protected)/` route group — `dashboard`, `documents`, and `chat` are all gated behind this layout, which redirects unauthenticated visitors back to `/login`
+
+Uses `@supabase/ssr` and `@supabase/supabase-js` for session handling on both server and client.
 
 ## Repository layout
 
