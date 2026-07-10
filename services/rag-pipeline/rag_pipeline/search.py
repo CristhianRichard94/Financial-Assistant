@@ -20,14 +20,16 @@ class SearchResult:
 
 def search(
     query: str,
+    user_id: str,
     k: int = DEFAULT_MATCH_COUNT,
     settings: Settings | None = None,
 ) -> list[SearchResult]:
-    """Embed `query` and return the top-k most similar chunks.
+    """Embed `query` and return the top-k most similar chunks owned by `user_id`.
 
     Calls the `match_document_chunks` Supabase RPC (see
-    sql/005_create_match_document_chunks_function.sql), which does the
-    cosine-similarity ranking inside Postgres using the HNSW index.
+    sql/008_scope_match_document_chunks_by_user.sql), which does the
+    cosine-similarity ranking inside Postgres using the HNSW index, scoped to
+    `p_user_id` so one user's search never surfaces another user's chunks.
     """
     settings = settings or load_settings()
 
@@ -36,7 +38,7 @@ def search(
     supabase = get_supabase_client(settings.supabase_url, settings.supabase_service_key)
     response = supabase.rpc(
         "match_document_chunks",
-        {"query_embedding": query_embedding, "match_count": k},
+        {"query_embedding": query_embedding, "match_count": k, "p_user_id": user_id},
     ).execute()
 
     return [

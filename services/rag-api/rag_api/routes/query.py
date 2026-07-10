@@ -12,7 +12,7 @@ import rag_pipeline
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from rag_api import openai_client
-from rag_api.auth import require_internal_api_key
+from rag_api.auth import require_internal_api_key, require_user_id
 from rag_api.config import load_rag_api_settings
 from rag_api.schemas import QueryRequest, QueryResponse
 
@@ -22,11 +22,11 @@ router = APIRouter(dependencies=[Depends(require_internal_api_key)])
 
 
 @router.post("/query", response_model=QueryResponse)
-def query(request: QueryRequest) -> QueryResponse:
+def query(request: QueryRequest, user_id: str = Depends(require_user_id)) -> QueryResponse:
     settings = load_rag_api_settings()
 
     try:
-        results = rag_pipeline.search(request.question, k=5)
+        results = rag_pipeline.search(request.question, user_id, k=5)
         answer, sources = openai_client.ask_openai(request.question, results, settings)
     except Exception:
         logger.exception("Failed to answer query")

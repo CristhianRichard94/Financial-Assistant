@@ -84,32 +84,6 @@ describe("store.documents", () => {
   });
 });
 
-describe("store.chat", () => {
-  it("lists the seeded messages", async () => {
-    const store = await freshStore();
-    expect(store.chat.list()).toHaveLength(3);
-  });
-
-  it("add() appends a message and list() reflects it", async () => {
-    const store = await freshStore();
-    const msg = store.chat.add("user", "Hello there");
-
-    expect(msg.role).toBe("user");
-    expect(msg.content).toBe("Hello there");
-
-    const messages = store.chat.list();
-    expect(messages).toHaveLength(4);
-    expect(messages.at(-1)).toEqual(msg);
-  });
-
-  it("list() returns a copy, not the live array", async () => {
-    const store = await freshStore();
-    const messages = store.chat.list();
-    messages.pop();
-    expect(store.chat.list()).toHaveLength(3);
-  });
-});
-
 describe("store.dashboard", () => {
   it("summary().documentCount reflects only processed documents", async () => {
     const store = await freshStore();

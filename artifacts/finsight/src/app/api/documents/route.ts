@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listDocuments, RagApiError, uploadDocument } from "@/lib/ragApiClient";
+import { requireUser } from "@/lib/auth/requireUser";
 import {
   BodyTooLargeError,
   boundRequestBody,
@@ -7,8 +8,11 @@ import {
 } from "@/lib/boundedRequestBody";
 
 export async function GET() {
+  const { user, response } = await requireUser();
+  if (!user) return response;
+
   try {
-    const documents = await listDocuments();
+    const documents = await listDocuments(user.id);
     return NextResponse.json(documents);
   } catch (error) {
     console.error("Failed to list documents via rag-api:", error);
@@ -28,6 +32,9 @@ const MULTIPART_OVERHEAD_ALLOWANCE_BYTES = 64 * 1024;
 const MAX_REQUEST_BODY_BYTES = MAX_UPLOAD_BYTES + MULTIPART_OVERHEAD_ALLOWANCE_BYTES;
 
 export async function POST(req: NextRequest) {
+  const { user, response: unauthorizedResponse } = await requireUser();
+  if (!user) return unauthorizedResponse;
+
   // Layer 1: cheap rejection based on the declared Content-Length, before
   // the body is read at all. `req.formData()` has no built-in size limit in
   // a Route Handler, so without this an oversized request would otherwise
@@ -63,7 +70,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const doc = await uploadDocument(formData);
+    const doc = await uploadDocument(formData, user.id);
     return NextResponse.json(doc, { status: 201 });
   } catch (error) {
     console.error("Failed to upload document via rag-api:", error);

@@ -29,9 +29,13 @@ on any other package manager.
 ## State management
 
 - `artifacts/finsight/src/lib/store.ts` — in-memory mock store for dashboard
-  data (still mocked; out of scope for the RAG feature)
-- Real document/chat data now flows through the Python `rag-api` service, not
-  the in-memory store — see the `rag-api` skill.
+  data only (still mocked; out of scope for the RAG feature)
+- Real document data flows through the Python `rag-api` service, not the
+  in-memory store — see the `rag-api` skill.
+- Real chat history is read/written directly against a Supabase
+  `chat_messages` table via `src/app/api/chat/messages/route.ts` (per-user,
+  enforced by Postgres RLS) — `rag-api` is only called per-message to
+  generate the assistant's reply text, not to store the conversation.
 
 ## Gotchas
 
