@@ -10,6 +10,7 @@ import logging
 
 import rag_pipeline
 from fastapi import APIRouter, Depends, HTTPException, status
+from rag_pipeline.config import DEFAULT_MATCH_COUNT
 
 from rag_api import openai_client
 from rag_api.auth import require_internal_api_key, require_user_id
@@ -26,7 +27,7 @@ def query(request: QueryRequest, user_id: str = Depends(require_user_id)) -> Que
     settings = load_rag_api_settings()
 
     try:
-        results = rag_pipeline.search(request.question, user_id, k=5)
+        results = rag_pipeline.search(request.question, user_id, k=DEFAULT_MATCH_COUNT)
         answer, sources = openai_client.ask_openai(request.question, results, settings)
     except Exception:
         logger.exception("Failed to answer query")
