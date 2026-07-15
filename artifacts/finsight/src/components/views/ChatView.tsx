@@ -2,19 +2,10 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, KeyboardEvent } from "react";
-import { Send, Bot, User, Loader2, FileText, AlertCircle, Clock } from "lucide-react";
-import { nanoid } from "nanoid";
-import { toast } from "sonner";
+import { Send, Bot, User, Loader2, FileText, AlertCircle } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 import Link from "next/link";
 import type { ChatMessage, Document } from "@/lib/store";
-
-type OptimisticStatus = "pending" | "failed";
-
-/** A chat message as rendered in the transcript. Optimistic user messages
- * carry a `status` while they are in flight or have failed to send; server
- * messages (and successfully-sent optimistic ones, once resolved) do not. */
-type DisplayMessage = ChatMessage & { status?: OptimisticStatus };
 
 function useMessages() {
   return useQuery<ChatMessage[]>({
@@ -38,17 +29,8 @@ function useDocuments() {
   });
 }
 
-function MessageBubble({
-  msg,
-  onRetryFailed,
-}: {
-  msg: DisplayMessage;
-  onRetryFailed?: (msg: DisplayMessage) => void;
-}) {
+function MessageBubble({ msg }: { msg: ChatMessage }) {
   const isUser = msg.role === "user";
-  const isPending = isUser && msg.status === "pending";
-  const isFailed = isUser && msg.status === "failed";
-
   return (
     <div className={cn("flex gap-3 items-start", isUser && "flex-row-reverse")}>
       <div
@@ -59,59 +41,20 @@ function MessageBubble({
       >
         {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
       </div>
-
       <div className={cn("flex flex-col gap-1 max-w-[75%]", isUser && "items-end")}>
         <div
-          onClick={isFailed ? () => onRetryFailed?.(msg) : undefined}
-          onKeyDown={
-            isFailed
-              ? (e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onRetryFailed?.(msg);
-                  }
-                }
-              : undefined
-          }
-          role={isFailed ? "button" : undefined}
-          tabIndex={isFailed ? 0 : undefined}
-          aria-label={isFailed ? "Message not sent. Press Enter to edit and resend." : undefined}
           className={cn(
             "px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap",
             isUser
               ? "bg-[hsl(var(--primary))] text-white rounded-tr-sm"
-              : "bg-[hsl(var(--card))] border border-[hsl(var(--border))] text-[hsl(var(--foreground))] rounded-tl-sm",
-            isPending && "opacity-70",
-            isFailed &&
-              "ring-1 ring-red-400/70 dark:ring-red-500/60 cursor-pointer hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2 transition"
+              : "bg-[hsl(var(--card))] border border-[hsl(var(--border))] text-[hsl(var(--foreground))] rounded-tl-sm"
           )}
         >
           {msg.content}
         </div>
-
-        <div className={cn("flex items-center gap-1.5 flex-wrap", isUser && "justify-end")}>
-          {isPending && (
-            <span className="inline-flex items-center gap-1 text-[hsl(var(--muted-foreground))]">
-              <Clock className="w-3 h-3" aria-hidden="true" />
-              <span className="sr-only">Sending…</span>
-            </span>
-          )}
-
-          <span className="text-xs text-[hsl(var(--muted-foreground))]">
-            {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-          </span>
-
-          {isFailed && (
-            <span
-              role="status"
-              aria-label="Message not sent"
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-400"
-            >
-              <AlertCircle className="w-3 h-3" aria-hidden="true" />
-              Not sent
-            </span>
-          )}
-        </div>
+        <span className="text-xs text-[hsl(var(--muted-foreground))]">
+          {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        </span>
       </div>
     </div>
   );
@@ -143,41 +86,14 @@ export function ChatView() {
   const { data: messages, isLoading, isError } = useMessages();
   const { data: documents } = useDocuments();
   const [input, setInput] = useState("");
-  const [optimisticMessages, setOptimisticMessages] = useState<DisplayMessage[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  // Ids of server messages that existed at the very first successful load —
-  // true pre-existing history, never a valid match for a later optimistic
-  // send. Captured once (not per-send): a per-send snapshot of "current
-  // messages" is unsafe, because a *different* concurrent send's refetch can
-  // resolve first and already include this send's own eventual message
-  // (the API persists synchronously before replying), which would poison
-  // that snapshot with the send's own id and make it un-matchable forever.
-  const initialMessageIdsRef = useRef<Set<string> | null>(null);
-  // Ids of server messages already matched to a resolved optimistic entry,
-  // so the same server message can't be claimed twice by two entries with
-  // identical content.
-  const claimedIdsRef = useRef<Set<string>>(new Set());
 
   const hasDocuments =
     documents && documents.some((d) => d.status === "processed");
 
-  // Server-fetched history plus any optimistic user messages that haven't
-  // been resolved yet (still pending or failed). Successfully-sent
-  // optimistic entries are removed once the server list has been refetched,
-  // so they never appear twice. Sorted by timestamp so that unresolved
-  // (pending/failed) local entries render at their true chronological
-  // position rather than always trailing after the whole server list —
-  // otherwise a failed send followed by a later successful one would show
-  // the later message above the earlier, failed one. Array#sort is stable,
-  // so entries sharing a timestamp keep their original relative order.
-  const displayMessages: DisplayMessage[] = [...(messages ?? []), ...optimisticMessages].sort(
-    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-  );
-  const hasPendingSend = optimisticMessages.some((m) => m.status === "pending");
-
-  const sendMutation = useMutation<unknown, Error, { clientId: string; content: string }>({
-    mutationFn: async ({ content }) => {
+  const sendMutation = useMutation({
+    mutationFn: async (content: string) => {
       const res = await fetch("/api/chat/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -186,118 +102,16 @@ export function ChatView() {
       if (!res.ok) throw new Error("Failed to send");
       return res.json();
     },
-    onSuccess: async () => {
-      // Refetch so the server list includes this message (and the assistant
-      // reply). The reconciliation effect below is what actually drops the
-      // matching optimistic entry once it sees the confirmed message —
-      // including entries for *other* concurrent sends whose own mutate()
-      // hasn't settled yet, which is what closes the duplicate-bubble race.
-      await queryClient.invalidateQueries({ queryKey: ["chat", "messages"] });
-    },
-    onError: (_error, variables) => {
-      setOptimisticMessages((prev) =>
-        prev.map((m) => (m.id === variables.clientId ? { ...m, status: "failed" } : m))
-      );
-      toast.error("Your message couldn't be sent. Please try again.");
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["chat", "messages"] });
     },
   });
 
-  // Reconcile pending optimistic entries against the server-fetched message
-  // list. Runs on every update of either `messages` *or* `optimisticMessages`
-  // — not just when a send's own mutate() call settles — for two reasons:
-  // (1) the API persists the user's message synchronously, before it awaits
-  // the (potentially slow) RAG call and responds to the POST, so a
-  // *different*, faster concurrent send's refetch can reveal this message on
-  // the server well before this send's own POST response reaches the client;
-  // (2) React Query's structural sharing keeps the same `messages` reference
-  // across refetches that return an identical body, so a new optimistic
-  // entry created *after* such a refetch (already reflecting it) would never
-  // get reconciled if this effect only re-ran on `messages` changes — it
-  // also needs to re-check whenever a new entry is added. Matching on
-  // content, scoped to messages that aren't part of pre-existing history and
-  // haven't already been claimed by another entry, lets us drop the
-  // optimistic bubble the moment the server confirms it, regardless of which
-  // mutate() triggered the refetch.
-  useEffect(() => {
-    if (!messages) return;
-    if (initialMessageIdsRef.current === null) {
-      // First successful load: everything here is pre-existing history,
-      // not a message any optimistic entry could ever legitimately match.
-      initialMessageIdsRef.current = new Set(messages.map((m) => m.id));
-      return;
-    }
-    setOptimisticMessages((prev) => {
-      if (!prev.some((m) => m.status === "pending")) return prev;
-      let changed = false;
-      const next = prev.filter((m) => {
-        if (m.status !== "pending") return true;
-        const match = messages.find(
-          (sm) =>
-            sm.role === "user" &&
-            sm.content === m.content &&
-            !initialMessageIdsRef.current!.has(sm.id) &&
-            !claimedIdsRef.current.has(sm.id)
-        );
-        if (!match) return true;
-        claimedIdsRef.current.add(match.id);
-        changed = true;
-        return false;
-      });
-      return changed ? next : prev;
-    });
-  }, [messages, optimisticMessages]);
-
   const handleSend = () => {
-    const content = input.trim();
-    if (!content) return;
-    // Guard against sending before the initial history fetch has succeeded,
-    // since the reconciliation effect above only starts matching new
-    // messages against optimistic entries once it has captured that first
-    // load's ids as pre-existing history. Gate on `!messages` (i.e. no data
-    // has ever been fetched yet) rather than `isLoading || isError`:
-    // - `isLoading` (`isPending && isFetching`) is false whenever the query's
-    //   `fetchStatus` is `"paused"` — e.g. the browser is offline when this
-    //   query first mounts under the default `networkMode: "online"`. In
-    //   that state the query never even attempts a fetch, `messages` stays
-    //   `undefined`, and neither `isLoading` nor `isError` is true, so an
-    //   `isLoading || isError` guard would let a send through with no
-    //   baseline captured — reopening the exact stuck-pending/duplicate-
-    //   bubble bug this guard exists to prevent.
-    // - `isError` reflects only the *latest* fetch attempt, not "has this
-    //   query ever succeeded". Once `messages` has been populated once,
-    //   React Query keeps that data across a later failed background
-    //   refetch (the query's `data` isn't cleared on error) — so `!messages`
-    //   correctly stays `false` forever after the first success, while
-    //   `isError` could flip back to `true` on a transient blip and
-    //   needlessly re-block sends that are perfectly safe to allow.
-    // `messages` and `initialMessageIdsRef.current` become non-null together
-    // (the reconciliation effect sets the ref the moment `messages` is first
-    // populated), so this doesn't reintroduce an ordering gap: React commits
-    // the render and flushes that effect synchronously, before the browser
-    // can dispatch another user-initiated event, so there's no window in
-    // which a real click/Enter can observe `messages` truthy but the ref
-    // still null.
-    if (!messages) {
-      if (!isLoading) {
-        toast.error(
-          "Couldn't load message history yet. Please wait for it to finish loading before sending.",
-          { id: "chat-history-error" }
-        );
-      }
-      return;
-    }
-    const clientId = nanoid();
-    setOptimisticMessages((prev) => [
-      ...prev,
-      { id: clientId, role: "user", content, timestamp: new Date().toISOString(), status: "pending" },
-    ]);
+    const msg = input.trim();
+    if (!msg || sendMutation.isPending) return;
     setInput("");
-    sendMutation.mutate({ clientId, content });
-  };
-
-  const handleRetryFailed = (msg: DisplayMessage) => {
-    setInput(msg.content);
-    textareaRef.current?.focus();
+    sendMutation.mutate(msg);
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -309,7 +123,7 @@ export function ChatView() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, optimisticMessages]);
+  }, [messages, sendMutation.isPending]);
 
   return (
     <div className="flex flex-col h-full bg-[hsl(var(--background))]">
@@ -336,19 +150,12 @@ export function ChatView() {
           <div className="flex justify-center py-12">
             <Loader2 className="w-6 h-6 animate-spin text-[hsl(var(--muted-foreground))]" />
           </div>
-        ) : isError && !messages ? (
-          // Only replace the whole panel with the hard error screen when we
-          // have no data to fall back on at all. If `messages` is already
-          // populated (a prior load succeeded), a later background refetch
-          // failure must not hide the already-visible conversation — React
-          // Query keeps the last successful `data` around across a failed
-          // refetch, so `messages` stays truthy and we fall through to the
-          // normal list/empty-state branches below instead.
+        ) : isError ? (
           <div className="flex flex-col items-center justify-center h-full py-16 text-center">
             <AlertCircle className="w-10 h-10 text-[hsl(var(--muted-foreground))]/40 mb-3" />
             <p className="text-sm text-[hsl(var(--muted-foreground))]">Couldn&apos;t load messages. Please try again.</p>
           </div>
-        ) : !displayMessages.length ? (
+        ) : !messages?.length ? (
           <div className="flex flex-col items-center justify-center h-full py-16 text-center space-y-4">
             <div className="w-16 h-16 rounded-full bg-[hsl(var(--accent))] flex items-center justify-center">
               <Bot className="w-8 h-8 text-[hsl(var(--accent-foreground))]" />
@@ -361,12 +168,10 @@ export function ChatView() {
             </div>
           </div>
         ) : (
-          displayMessages.map((msg) => (
-            <MessageBubble key={msg.id} msg={msg} onRetryFailed={handleRetryFailed} />
-          ))
+          messages.map((msg) => <MessageBubble key={msg.id} msg={msg} />)
         )}
 
-        {hasPendingSend && <TypingIndicator />}
+        {sendMutation.isPending && <TypingIndicator />}
         <div ref={bottomRef} />
       </div>
 
@@ -399,16 +204,21 @@ export function ChatView() {
                   ? "Ask me about your finances…"
                   : "Ask me anything…"
               }
+              disabled={sendMutation.isPending}
               className="w-full resize-none rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-4 py-3 pr-12 text-sm placeholder:text-[hsl(var(--muted-foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))] disabled:opacity-50 transition-colors min-h-[48px] max-h-40"
               style={{ fieldSizing: "content" } as React.CSSProperties}
             />
           </div>
           <button
             onClick={handleSend}
-            disabled={!input.trim() || !messages}
+            disabled={!input.trim() || sendMutation.isPending}
             className="w-10 h-10 rounded-xl bg-[hsl(var(--primary))] text-white flex items-center justify-center hover:opacity-90 transition-opacity disabled:opacity-40 shrink-0"
           >
-            <Send className="w-4 h-4" />
+            {sendMutation.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Send className="w-4 h-4" />
+            )}
           </button>
         </div>
         <p className="text-xs text-[hsl(var(--muted-foreground))] mt-2 text-center max-w-4xl mx-auto">

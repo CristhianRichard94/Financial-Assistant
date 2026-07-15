@@ -9,15 +9,80 @@ import {
   TrendingUp,
   Menu,
   X,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useTheme } from "next-themes";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/documents", label: "Documents", icon: FileText },
   { href: "/chat", label: "Chat", icon: MessageSquare },
 ];
+
+function ThemeToggle({ variant }: { variant: "desktop" | "mobile" }) {
+  const { resolvedTheme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (variant === "desktop") {
+    if (!mounted) {
+      return (
+        <div
+          aria-hidden="true"
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[hsl(var(--sidebar-foreground))] mb-3"
+        >
+          <span className="invisible flex items-center gap-3">
+            <Moon className="w-4 h-4 shrink-0" />
+            Dark mode
+          </span>
+        </div>
+      );
+    }
+
+    const isDark = resolvedTheme === "dark";
+    return (
+      <button
+        type="button"
+        onClick={() => setTheme(isDark ? "light" : "dark")}
+        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[hsl(var(--sidebar-foreground))] hover:bg-white/10 hover:text-white transition-all motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--sidebar-primary))] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--sidebar))] mb-3"
+      >
+        {isDark ? (
+          <Moon className="w-4 h-4 shrink-0" />
+        ) : (
+          <Sun className="w-4 h-4 shrink-0" />
+        )}
+        {isDark ? "Dark mode" : "Light mode"}
+      </button>
+    );
+  }
+
+  // mobile
+  if (!mounted) {
+    return (
+      <div aria-hidden="true" className="ml-auto p-2 rounded-lg">
+        <Sun className="w-5 h-5 invisible" />
+      </div>
+    );
+  }
+
+  const isDark = resolvedTheme === "dark";
+  return (
+    <button
+      type="button"
+      onClick={() => setTheme(isDark ? "light" : "dark")}
+      aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
+      className="ml-auto p-2 rounded-lg hover:bg-[hsl(var(--muted))] transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--background))]"
+    >
+      {isDark ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+    </button>
+  );
+}
 
 function Sidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
@@ -40,14 +105,14 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
 
       <nav className="flex-1 px-3 py-4 space-y-1">
         {navItems.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || pathname.startsWith(href + "/");
+          const active = pathname === href || pathname?.startsWith(href + "/");
           return (
             <Link
               key={href}
               href={href}
               onClick={onClose}
               className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all",
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ease-out",
                 active
                   ? "bg-[hsl(var(--primary))] text-white shadow-sm"
                   : "text-[hsl(var(--sidebar-foreground))] hover:bg-white/10 hover:text-white"
@@ -61,7 +126,8 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
       </nav>
 
       <div className="px-4 py-4 border-t border-[hsl(var(--sidebar-border))]">
-        <p className="text-xs text-[hsl(var(--muted-foreground))] opacity-60">
+        <ThemeToggle variant="desktop" />
+        <p className="text-xs text-[hsl(var(--sidebar-foreground))] opacity-60">
           AI-powered finance assistant
         </p>
       </div>
@@ -73,7 +139,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[hsl(var(--background))]">
+    <div className="flex h-screen overflow-hidden bg-[hsl(var(--background))] transition-colors duration-200">
       {/* Desktop sidebar */}
       <div className="hidden lg:flex shrink-0">
         <Sidebar />
@@ -108,6 +174,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
             <span className="font-semibold text-sm">FinSight</span>
           </div>
+          <ThemeToggle variant="mobile" />
         </header>
 
         <main className="flex-1 overflow-auto">{children}</main>
