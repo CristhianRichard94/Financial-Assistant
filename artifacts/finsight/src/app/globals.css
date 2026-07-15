@@ -1,5 +1,142 @@
 @import "tailwindcss";
 
+/* ============================================================================
+ * @ds/tokens (design-system v0.1.1) — SCOPED integration.
+ *
+ * @ds/tokens' own stylesheet (`@ds/tokens/css`) defines its semantic tokens
+ * (--bg, --fg, --border, --accent, --card, --muted, --destructive, etc.) at
+ * `:root` / `[data-theme="light"]`. Those exact custom-property names are
+ * ALSO already used by finsight's own shadcn theme above (--border, --card,
+ * --accent, --muted, --destructive, ...), but with a different value shape
+ * (shadcn stores raw "H S L" triples consumed via hsl(var(--x)), while
+ * @ds/tokens stores full color values consumed directly as var(--x)).
+ *
+ * Importing `@ds/tokens/css` unscoped would silently overwrite finsight's
+ * existing shadcn theme for the entire app. To avoid that, the token values
+ * below are copied from @ds/tokens@v0.1.1 (packages/tokens/src/tokens.css)
+ * and re-scoped under a `[data-ds-scope]` wrapper selector, so only
+ * elements explicitly opted into the design-system theme (i.e. wrapped in
+ * `<div data-ds-scope>`) pick up these values. Nothing outside that wrapper
+ * is affected, and no existing finsight component's variables are touched.
+ * ========================================================================== */
+[data-ds-scope] {
+  color-scheme: dark;
+
+  /* Neutral scale (zinc) */
+  --neutral-50: #fafafa;
+  --neutral-100: #f4f4f5;
+  --neutral-200: #e4e4e7;
+  --neutral-300: #d4d4d8;
+  --neutral-400: #a1a1aa;
+  --neutral-500: #71717a;
+  --neutral-600: #52525b;
+  --neutral-700: #3f3f46;
+  --neutral-800: #27272a;
+  --neutral-900: #18181b;
+  --neutral-950: #09090b;
+
+  /* Accent scale (navy blue) */
+  --accent-50: #eff4ff;
+  --accent-100: #dbe6fe;
+  --accent-200: #bfd4fe;
+  --accent-300: #93b7fd;
+  --accent-400: #6090fa;
+  --accent-500: #3b66f5;
+  --accent-600: #2547e8;
+  --accent-700: #1e3ac7;
+  --accent-800: #1e3aa1;
+  --accent-900: #1e3a8a;
+  --accent-950: #16215a;
+
+  /* Semantic tokens (dark, default) */
+  --bg: var(--neutral-950);
+  --fg: var(--neutral-50);
+  --muted: var(--neutral-900);
+  --muted-foreground: var(--neutral-400);
+  --border: var(--neutral-800);
+  --ring: var(--accent-500);
+  --accent: var(--accent-700);
+  --accent-foreground: var(--neutral-50);
+  --destructive: #ef4444;
+  --destructive-foreground: var(--neutral-50);
+  --card: var(--neutral-900);
+  --card-foreground: var(--neutral-50);
+
+  /* Radius */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 1rem;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 12px 32px -8px rgb(0 0 0 / 0.5);
+  --shadow-glow: 0 0 0 1px var(--accent-600), 0 0 24px -4px var(--accent-600);
+
+  /* Motion */
+  --duration-fast: 120ms;
+  --duration-base: 220ms;
+  --duration-slow: 400ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+[data-ds-scope][data-theme="light"] {
+  color-scheme: light;
+
+  --bg: var(--neutral-50);
+  --fg: var(--neutral-950);
+  --muted: var(--neutral-100);
+  --muted-foreground: var(--neutral-600);
+  --border: var(--neutral-200);
+  --ring: var(--accent-600);
+  --accent: var(--accent-700);
+  --accent-foreground: var(--neutral-50);
+  --destructive: #dc2626;
+  --destructive-foreground: var(--neutral-50);
+  --card: #ffffff;
+  --card-foreground: var(--neutral-950);
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.06);
+  --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 12px 32px -8px rgb(0 0 0 / 0.15);
+  --shadow-glow: 0 0 0 1px var(--accent-600), 0 0 24px -4px var(--accent-500);
+}
+
+/* Map @ds/tokens' scoped custom properties to Tailwind v4 theme variables so
+ * @ds/ui's utility classes (bg-accent, border-border, text-fg, bg-card,
+ * text-card-foreground, bg-muted, text-muted-foreground, ring, etc.) resolve.
+ * Because these theme vars reference the [data-ds-scope]-scoped custom
+ * properties above, the generated utilities only render correctly inside a
+ * `[data-ds-scope]` wrapper — everywhere else var(--accent) etc. are unset,
+ * so finsight's existing components are visually unaffected. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-400: var(--accent-400);
+  --color-accent-500: var(--accent-500);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-glow: var(--shadow-glow);
+}
+
+@source "../../node_modules/@ds/ui/dist";
+
 @custom-variant dark (&:is(.dark *));
 
 :root {

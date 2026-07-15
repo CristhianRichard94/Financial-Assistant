@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@ds/ui";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { BrandLockup } from "@/components/auth/BrandLockup";
@@ -86,26 +86,31 @@ export function LoginForm({ error: initialError, redirectTo }: LoginFormProps) {
           </Alert>
         )}
 
-        <Button
-          size="lg"
-          className="w-full gap-2"
-          autoFocus
-          onClick={handleSignIn}
-          disabled={isRedirecting}
-          aria-busy={isRedirecting}
-        >
-          {isRedirecting ? (
-            <>
-              <Spinner className="size-4" />
-              Redirecting…
-            </>
-          ) : (
-            <>
-              <img src="/google-logo.svg" alt="" width={18} height={18} />
-              Sign in with Google
-            </>
-          )}
-        </Button>
+        {/* @ds/ui Button proof-of-integration: [data-ds-scope] activates the
+            @ds/tokens CSS variables (scoped, see globals.css) that @ds/ui's
+            utility classes (bg-accent, border-border, etc.) depend on. */}
+        <div data-ds-scope className="w-full">
+          <Button
+            size="lg"
+            className="w-full gap-2"
+            autoFocus
+            onClick={handleSignIn}
+            disabled={isRedirecting}
+            aria-busy={isRedirecting}
+          >
+            {isRedirecting ? (
+              <>
+                <Spinner className="size-4" />
+                Redirecting…
+              </>
+            ) : (
+              <>
+                <img src="/google-logo.svg" alt="" width={18} height={18} />
+                Sign in with Google
+              </>
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );
