@@ -114,12 +114,30 @@ class FakeTableQuery:
         raise AssertionError("execute() called before an operation was set")
 
 
+class FakeRpcQuery:
+    """Minimal stand-in for a supabase-py RPC call builder (.rpc(...).execute())."""
+
+    def __init__(self, client: "FakeSupabaseClient", name: str, params: dict[str, Any]):
+        self._client = client
+        self._name = name
+        self._params = params
+
+    def execute(self) -> FakeResponse:
+        self._client.rpc_calls.append((self._name, self._params))
+        return FakeResponse(self._client.rpc_response)
+
+
 class FakeSupabaseClient:
     def __init__(self) -> None:
         self.tables: dict[str, list[dict[str, Any]]] = {}
+        self.rpc_calls: list[tuple[str, dict[str, Any]]] = []
+        self.rpc_response: list[dict[str, Any]] = []
 
     def table(self, name: str) -> FakeTableQuery:
         return FakeTableQuery(self.tables, name)
+
+    def rpc(self, name: str, params: dict[str, Any]) -> FakeRpcQuery:
+        return FakeRpcQuery(self, name, params)
 
 
 @pytest.fixture
@@ -151,5 +169,7 @@ def fake_embeddings(mocker):
         return _embed_texts([text], _api_key)[0]
 
     mocker.patch("rag_pipeline.ingest.embed_texts", side_effect=_embed_texts)
-    mocker.patch("rag_pipeline.search.embed_text", side_effect=_embed_text)
-    return _embed_texts
+    embed_text_mock = mocker.patch(
+        "rag_pipeline.search.embed_text", side_effect=_embed_text
+    )
+    return embed_text_mock

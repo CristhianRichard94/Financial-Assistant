@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rag_pipeline.config import DEFAULT_MATCH_COUNT
 from rag_pipeline.search import SearchResult
 
 from rag_api.schemas import SourceOut
@@ -47,7 +48,9 @@ def test_query_scopes_search_to_the_requesting_user(client, user_id, mocker):
 
     client.post("/query", json={"question": "How much did I spend?"})
 
-    search.assert_called_once_with("How much did I spend?", user_id, k=5)
+    search.assert_called_once_with(
+        "How much did I spend?", user_id, k=DEFAULT_MATCH_COUNT
+    )
 
 
 def test_query_rejects_empty_question(client):

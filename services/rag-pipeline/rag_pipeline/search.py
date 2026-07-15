@@ -1,8 +1,9 @@
-"""Similarity search over ingested document chunks."""
+"""Hybrid (vector + full-text) search over ingested document chunks."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
 
 from rag_pipeline.config import DEFAULT_MATCH_COUNT, Settings, load_settings
@@ -18,27 +19,49 @@ class SearchResult:
     similarity: float
 
 
+@lru_cache(maxsize=256)
+def _cached_embed_query(query: str, api_key: str) -> tuple[float, ...]:
+    # ponytail: process-local cache, not shared across workers/restarts — move to Redis if hit-rate matters at scale
+    return tuple(embed_text(query, api_key))
+
+
 def search(
     query: str,
     user_id: str,
     k: int = DEFAULT_MATCH_COUNT,
     settings: Settings | None = None,
 ) -> list[SearchResult]:
-    """Embed `query` and return the top-k most similar chunks owned by `user_id`.
+    """Embed `query` and return the top-k most relevant chunks owned by `user_id`.
 
-    Calls the `match_document_chunks` Supabase RPC (see
-    sql/008_scope_match_document_chunks_by_user.sql), which does the
-    cosine-similarity ranking inside Postgres using the HNSW index, scoped to
-    `p_user_id` so one user's search never surfaces another user's chunks.
+    Calls the `match_document_chunks_hybrid` Supabase RPC (see
+    sql/010_add_chunk_text_fts_index.sql and
+    sql/011_create_match_document_chunks_hybrid_function.sql), which fuses a
+    vector-similarity ranked list (cosine distance over the HNSW index) with a
+    Postgres full-text-search ranked list (useful for exact keyword/number
+    matches like account numbers that embedding similarity can miss) via
+    reciprocal rank fusion (RRF), all scoped to `p_user_id` so one user's
+    search never surfaces another user's chunks.
+
+    Both underlying ranked lists are widened to a candidate pool of
+    `min(k * 4, 40)` rows before RRF fusion trims the fused result back down
+    to `k`, so the final result set is still exactly `k` rows.
     """
     settings = settings or load_settings()
 
-    query_embedding = embed_text(query, settings.openai_api_key)
+    query_embedding = list(_cached_embed_query(query, settings.openai_api_key))
+
+    candidate_pool = min(k * 4, 40)
 
     supabase = get_supabase_client(settings.supabase_url, settings.supabase_service_key)
     response = supabase.rpc(
-        "match_document_chunks",
-        {"query_embedding": query_embedding, "match_count": k, "p_user_id": user_id},
+        "match_document_chunks_hybrid",
+        {
+            "query_embedding": query_embedding,
+            "query_text": query,
+            "match_count": k,
+            "p_user_id": user_id,
+            "p_candidate_pool": candidate_pool,
+        },
     ).execute()
 
     return [
