@@ -80,29 +80,6 @@ const documents: Document[] = [
   },
 ];
 
-const chatMessages: ChatMessage[] = [
-  {
-    id: nanoid(),
-    role: "assistant",
-    content:
-      "Hello! I'm your FinSight assistant. I've analyzed your uploaded documents and I'm ready to answer questions about your finances. What would you like to know?",
-    timestamp: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-  },
-  {
-    id: nanoid(),
-    role: "user",
-    content: "What are my biggest spending categories this month?",
-    timestamp: new Date(Date.now() - 9 * 60 * 1000).toISOString(),
-  },
-  {
-    id: nanoid(),
-    role: "assistant",
-    content:
-      "Based on your uploaded documents, your top 3 spending categories are:\n\n1. **Housing** — $2,100 (38% of spending)\n2. **Groceries & Dining** — $680 (12%)\n3. **Transportation** — $420 (8%)\n\nOverall, your spending looks healthy. Would you like tips on where you might be able to save?",
-    timestamp: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
-  },
-];
-
 export const store = {
   documents: {
     list: (): Document[] => [...documents],
@@ -131,19 +108,6 @@ export const store = {
       if (idx === -1) return false;
       documents.splice(idx, 1);
       return true;
-    },
-  },
-  chat: {
-    list: (): ChatMessage[] => [...chatMessages],
-    add: (role: "user" | "assistant", content: string): ChatMessage => {
-      const msg: ChatMessage = {
-        id: nanoid(),
-        role,
-        content,
-        timestamp: new Date().toISOString(),
-      };
-      chatMessages.push(msg);
-      return msg;
     },
   },
   dashboard: {

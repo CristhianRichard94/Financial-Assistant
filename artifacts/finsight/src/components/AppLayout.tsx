@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   FileText,
@@ -11,16 +11,78 @@ import {
   X,
   Sun,
   Moon,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { useTheme } from "next-themes";
+import { toast } from "sonner";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { createClient } from "@/lib/supabase/browser";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/documents", label: "Documents", icon: FileText },
   { href: "/chat", label: "Chat", icon: MessageSquare },
 ];
+
+export interface SidebarUser {
+  email: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+}
+
+function getInitials(label: string): string {
+  const words = label.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+}
+
+function IdentityMenu({ user }: { user: SidebarUser }) {
+  const router = useRouter();
+  const identityLabel = user.displayName || user.email;
+  const initials = getInitials(identityLabel);
+
+  async function handleLogout() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    toast("Signed out");
+    router.push("/login");
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={`${identityLabel} account menu`}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[hsl(var(--sidebar-foreground))] hover:bg-white/10 hover:text-white transition-all motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--sidebar-primary))] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--sidebar))] mb-3"
+        >
+          <Avatar className="h-8 w-8 shrink-0">
+            <AvatarImage src={user.avatarUrl ?? undefined} alt="" />
+            <AvatarFallback className="bg-[hsl(var(--sidebar-muted))] text-[hsl(var(--sidebar-foreground))] text-xs font-medium">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+          <span className="flex-1 min-w-0 text-left truncate">{identityLabel}</span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-56">
+        <DropdownMenuItem onClick={handleLogout}>
+          <LogOut className="mr-2" />
+          Log out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 function ThemeToggle({ variant }: { variant: "desktop" | "mobile" }) {
   const { resolvedTheme, setTheme } = useTheme();
@@ -84,7 +146,7 @@ function ThemeToggle({ variant }: { variant: "desktop" | "mobile" }) {
   );
 }
 
-function Sidebar({ onClose }: { onClose?: () => void }) {
+function Sidebar({ onClose, user }: { onClose?: () => void; user: SidebarUser }) {
   const pathname = usePathname();
   return (
     <aside className="flex flex-col h-full w-64 bg-[hsl(var(--sidebar))] text-[hsl(var(--sidebar-foreground))]">
@@ -126,6 +188,7 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
       </nav>
 
       <div className="px-4 py-4 border-t border-[hsl(var(--sidebar-border))]">
+        <IdentityMenu user={user} />
         <ThemeToggle variant="desktop" />
         <p className="text-xs text-[hsl(var(--sidebar-foreground))] opacity-60">
           AI-powered finance assistant
@@ -135,14 +198,20 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
   );
 }
 
-export function AppLayout({ children }: { children: React.ReactNode }) {
+export function AppLayout({
+  children,
+  user,
+}: {
+  children: React.ReactNode;
+  user: SidebarUser;
+}) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
     <div className="flex h-screen overflow-hidden bg-[hsl(var(--background))] transition-colors duration-200">
       {/* Desktop sidebar */}
       <div className="hidden lg:flex shrink-0">
-        <Sidebar />
+        <Sidebar user={user} />
       </div>
 
       {/* Mobile sidebar overlay */}
@@ -153,7 +222,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             onClick={() => setMobileOpen(false)}
           />
           <div className="relative z-50 flex h-full">
-            <Sidebar onClose={() => setMobileOpen(false)} />
+            <Sidebar onClose={() => setMobileOpen(false)} user={user} />
           </div>
         </div>
       )}

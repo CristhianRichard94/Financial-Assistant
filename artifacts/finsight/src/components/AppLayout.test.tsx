@@ -1,13 +1,35 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { AppLayout } from "@/components/AppLayout";
+import { AppLayout, type SidebarUser } from "@/components/AppLayout";
 
 const mockUsePathname = vi.fn();
+const mockPush = vi.fn();
 
 vi.mock("next/navigation", () => ({
   usePathname: () => mockUsePathname(),
+  useRouter: () => ({ push: mockPush }),
 }));
+
+const mockToast = vi.fn();
+vi.mock("sonner", () => ({
+  toast: (...args: unknown[]) => mockToast(...args),
+}));
+
+const mockSignOut = vi.fn().mockResolvedValue({ error: null });
+vi.mock("@/lib/supabase/browser", () => ({
+  createClient: () => ({
+    auth: {
+      signOut: (...args: unknown[]) => mockSignOut(...args),
+    },
+  }),
+}));
+
+const testUser: SidebarUser = {
+  email: "jane@example.com",
+  displayName: "Jane Doe",
+  avatarUrl: null,
+};
 
 describe("AppLayout", () => {
   afterEach(() => {
@@ -18,7 +40,7 @@ describe("AppLayout", () => {
     mockUsePathname.mockReturnValue("/dashboard");
 
     render(
-      <AppLayout>
+      <AppLayout user={testUser}>
         <div>content</div>
       </AppLayout>
     );
@@ -35,7 +57,7 @@ describe("AppLayout", () => {
     mockUsePathname.mockReturnValue("/documents/123");
 
     render(
-      <AppLayout>
+      <AppLayout user={testUser}>
         <div>content</div>
       </AppLayout>
     );
@@ -51,7 +73,7 @@ describe("AppLayout", () => {
     mockUsePathname.mockReturnValue("/dashboard");
 
     render(
-      <AppLayout>
+      <AppLayout user={testUser}>
         <div>page content</div>
       </AppLayout>
     );
@@ -64,7 +86,7 @@ describe("AppLayout", () => {
     mockUsePathname.mockReturnValue("/dashboard");
 
     const { container } = render(
-      <AppLayout>
+      <AppLayout user={testUser}>
         <div>content</div>
       </AppLayout>
     );
@@ -91,5 +113,58 @@ describe("AppLayout", () => {
     await user.click(closeButton!);
 
     expect(container.querySelector(".fixed.inset-0")).not.toBeInTheDocument();
+  });
+
+  describe("identity menu", () => {
+    it("shows the display name and its initials when a display name is set", () => {
+      mockUsePathname.mockReturnValue("/dashboard");
+
+      render(
+        <AppLayout user={testUser}>
+          <div>content</div>
+        </AppLayout>
+      );
+
+      expect(
+        screen.getAllByRole("button", { name: "Jane Doe account menu" })[0]
+      ).toBeInTheDocument();
+      expect(screen.getAllByText("JD")[0]).toBeInTheDocument();
+    });
+
+    it("falls back to the email (and its initials) when there is no display name", () => {
+      mockUsePathname.mockReturnValue("/dashboard");
+
+      render(
+        <AppLayout user={{ email: "jane@example.com", displayName: null, avatarUrl: null }}>
+          <div>content</div>
+        </AppLayout>
+      );
+
+      expect(
+        screen.getAllByRole("button", { name: "jane@example.com account menu" })[0]
+      ).toBeInTheDocument();
+      expect(screen.getAllByText("JA")[0]).toBeInTheDocument();
+    });
+
+    it("logs out, shows a toast, and redirects to /login when 'Log out' is clicked", async () => {
+      const user = userEvent.setup();
+      mockUsePathname.mockReturnValue("/dashboard");
+
+      render(
+        <AppLayout user={testUser}>
+          <div>content</div>
+        </AppLayout>
+      );
+
+      const trigger = screen.getAllByRole("button", { name: "Jane Doe account menu" })[0];
+      await user.click(trigger);
+
+      const logoutItem = await screen.findByText("Log out");
+      await user.click(logoutItem);
+
+      expect(mockSignOut).toHaveBeenCalledTimes(1);
+      expect(mockToast).toHaveBeenCalledWith("Signed out");
+      expect(mockPush).toHaveBeenCalledWith("/login");
+    });
   });
 });

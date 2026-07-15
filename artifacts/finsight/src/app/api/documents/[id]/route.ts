@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deleteDocument, RagApiError } from "@/lib/ragApiClient";
+import { requireUser } from "@/lib/auth/requireUser";
 
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { user, response } = await requireUser();
+  if (!user) return response;
+
   const { id } = await params;
   try {
-    await deleteDocument(id);
+    await deleteDocument(id, user.id);
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     if (error instanceof RagApiError && error.status === 404) {
