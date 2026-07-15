@@ -29,7 +29,7 @@ create function match_document_chunks_hybrid (
     query_text text,
     match_count int,
     p_user_id uuid,
-    p_candidate_pool int default greatest(match_count * 4, 20)
+    p_candidate_pool int default null
 )
 returns table (
     id uuid,
@@ -52,7 +52,7 @@ as $$
         from document_chunks
         where document_chunks.user_id = p_user_id
         order by document_chunks.embedding <=> query_embedding
-        limit p_candidate_pool
+        limit coalesce(p_candidate_pool, greatest(match_count * 4, 20))
     ),
     fts_ranked as (
         select
@@ -70,7 +70,7 @@ as $$
             document_chunks.chunk_text_tsv,
             plainto_tsquery('english', query_text)
         ) desc
-        limit p_candidate_pool
+        limit coalesce(p_candidate_pool, greatest(match_count * 4, 20))
     ),
     fused as (
         select

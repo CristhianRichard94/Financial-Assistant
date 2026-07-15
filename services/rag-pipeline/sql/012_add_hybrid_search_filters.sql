@@ -23,7 +23,7 @@ create or replace function match_document_chunks_hybrid (
     query_text text,
     match_count int,
     p_user_id uuid,
-    p_candidate_pool int default greatest(match_count * 4, 20),
+    p_candidate_pool int default null,
     p_date_from timestamptz default null,
     p_date_to timestamptz default null,
     p_document_type text default null
@@ -53,7 +53,7 @@ as $$
             and (p_date_to is null or documents.upload_date::date <= p_date_to::date)
             and (p_document_type is null or documents.metadata->>'document_type' = p_document_type)
         order by document_chunks.embedding <=> query_embedding
-        limit p_candidate_pool
+        limit coalesce(p_candidate_pool, greatest(match_count * 4, 20))
     ),
     fts_ranked as (
         select
@@ -75,7 +75,7 @@ as $$
             document_chunks.chunk_text_tsv,
             plainto_tsquery('english', query_text)
         ) desc
-        limit p_candidate_pool
+        limit coalesce(p_candidate_pool, greatest(match_count * 4, 20))
     ),
     fused as (
         select
