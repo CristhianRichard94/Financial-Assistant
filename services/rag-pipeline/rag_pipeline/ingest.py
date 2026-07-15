@@ -12,6 +12,28 @@ from rag_pipeline.embeddings import embed_texts
 from rag_pipeline.parsing import parse_document
 from rag_pipeline.supabase_client import get_supabase_client
 
+_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+
+
+def infer_document_type(filename: str) -> str | None:
+    """Infer the `documents.metadata.document_type` value from a filename's
+    extension, mirroring `rag_api.schemas.DocumentTypeOut`'s
+    pdf/csv/image categories.
+
+    Returns None for an unrecognized extension rather than guessing, so the
+    `p_document_type` hybrid-search filter (see
+    sql/012_add_hybrid_search_filters.sql) simply never matches those rows
+    on an explicit type rather than being fed a wrong value.
+    """
+    suffix = Path(filename).suffix.lower()
+    if suffix == ".pdf":
+        return "pdf"
+    if suffix == ".csv":
+        return "csv"
+    if suffix in _IMAGE_EXTENSIONS:
+        return "image"
+    return None
+
 
 @dataclass(frozen=True)
 class IngestResult:
@@ -38,13 +60,20 @@ def create_pending_document(
     settings = settings or load_settings()
     supabase = get_supabase_client(settings.supabase_url, settings.supabase_service_key)
 
+    document_type = infer_document_type(filename)
+    merged_metadata = dict(metadata or {})
+    if document_type is not None:
+        # Merge, never clobber: any caller-supplied metadata keys (e.g.
+        # size_bytes from the /upload route) are preserved as-is.
+        merged_metadata.setdefault("document_type", document_type)
+
     document_row = (
         supabase.table("documents")
         .insert(
             {
                 "filename": filename,
                 "user_id": user_id,
-                "metadata": metadata or {},
+                "metadata": merged_metadata,
             }
         )
         .execute()

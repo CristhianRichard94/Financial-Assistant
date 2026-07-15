@@ -41,7 +41,7 @@ def test_get_document_returns_record_when_found(fake_supabase, fake_settings):
     assert record.id == document_id
     assert record.filename == "doc.csv"
     assert record.status == "pending"
-    assert record.metadata == {"size_bytes": 42}
+    assert record.metadata == {"size_bytes": 42, "document_type": "csv"}
 
 
 def test_get_document_returns_none_when_missing(fake_supabase, fake_settings):

@@ -12,7 +12,7 @@ import rag_pipeline
 from fastapi import APIRouter, Depends, HTTPException, status
 from rag_pipeline.config import DEFAULT_MATCH_COUNT
 
-from rag_api import openai_client
+from rag_api import openai_client, query_parser
 from rag_api.auth import require_internal_api_key, require_user_id
 from rag_api.config import load_rag_api_settings
 from rag_api.schemas import QueryRequest, QueryResponse
@@ -21,13 +21,34 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(dependencies=[Depends(require_internal_api_key)])
 
+# Fixed canned response for questions the query-parsing layer classifies as
+# out_of_scope (e.g. chitchat, general finance advice unrelated to the
+# user's own documents). Short-circuits retrieval and the answer-synthesis
+# OpenAI call entirely, since there's nothing to retrieve or answer.
+OUT_OF_SCOPE_ANSWER = "I can only answer questions about your uploaded financial documents."
+
 
 @router.post("/query", response_model=QueryResponse)
 def query(request: QueryRequest, user_id: str = Depends(require_user_id)) -> QueryResponse:
     settings = load_rag_api_settings()
 
     try:
-        results = rag_pipeline.search(request.question, user_id, k=DEFAULT_MATCH_COUNT)
+        parsed = query_parser.parse_query(request.question, settings)
+
+        if parsed.intent == "out_of_scope":
+            return QueryResponse(answer=OUT_OF_SCOPE_ANSWER, sources=[])
+
+        results = rag_pipeline.search(
+            parsed.rewritten_query,
+            user_id,
+            k=DEFAULT_MATCH_COUNT,
+            date_from=parsed.date_from,
+            date_to=parsed.date_to,
+            document_type=parsed.document_type,
+        )
+        # The original raw question (not the rewritten retrieval query) is
+        # what the final answer should respond to - the rewrite is purely a
+        # retrieval aid.
         answer, sources = openai_client.ask_openai(request.question, results, settings)
     except Exception:
         logger.exception("Failed to answer query")
