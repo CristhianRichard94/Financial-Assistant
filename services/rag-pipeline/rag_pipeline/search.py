@@ -30,8 +30,17 @@ def search(
     user_id: str,
     k: int = DEFAULT_MATCH_COUNT,
     settings: Settings | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    document_type: str | None = None,
 ) -> list[SearchResult]:
     """Embed `query` and return the top-k most relevant chunks owned by `user_id`.
+
+    `date_from`/`date_to` (ISO 8601 dates) and `document_type` are optional
+    filters applied against `documents.upload_date` and
+    `documents.metadata->>'document_type'` respectively (see
+    sql/012_add_hybrid_search_filters.sql). All default to None, which
+    disables the corresponding filter, preserving prior unfiltered behavior.
 
     Calls the `match_document_chunks_hybrid` Supabase RPC (see
     sql/010_add_chunk_text_fts_index.sql and
@@ -61,6 +70,9 @@ def search(
             "match_count": k,
             "p_user_id": user_id,
             "p_candidate_pool": candidate_pool,
+            "p_date_from": date_from,
+            "p_date_to": date_to,
+            "p_document_type": document_type,
         },
     ).execute()
 

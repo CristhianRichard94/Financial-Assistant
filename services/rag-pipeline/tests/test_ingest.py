@@ -26,18 +26,59 @@ def test_create_pending_document_inserts_row_with_metadata(fake_supabase, fake_s
     assert row["id"] == document_id
     assert row["filename"] == "statement.pdf"
     assert row["user_id"] == USER_ID
-    assert row["metadata"] == {"size_bytes": 1234}
+    assert row["metadata"] == {"size_bytes": 1234, "document_type": "pdf"}
     # Status is left for the table's own default ("pending") to apply.
     assert row["status"] == "pending"
 
 
-def test_create_pending_document_defaults_metadata_to_empty_dict(
+def test_create_pending_document_defaults_metadata_to_inferred_document_type(
     fake_supabase, fake_settings
 ):
     create_pending_document("no_metadata.csv", USER_ID, settings=fake_settings)
 
     row = fake_supabase.tables["documents"][0]
-    assert row["metadata"] == {}
+    assert row["metadata"] == {"document_type": "csv"}
+
+
+def test_create_pending_document_infers_document_type_for_pdf(
+    fake_supabase, fake_settings
+):
+    create_pending_document("statement.pdf", USER_ID, settings=fake_settings)
+
+    row = fake_supabase.tables["documents"][0]
+    assert row["metadata"]["document_type"] == "pdf"
+
+
+def test_create_pending_document_infers_document_type_for_image(
+    fake_supabase, fake_settings
+):
+    create_pending_document("receipt.jpg", USER_ID, settings=fake_settings)
+
+    row = fake_supabase.tables["documents"][0]
+    assert row["metadata"]["document_type"] == "image"
+
+
+def test_create_pending_document_does_not_clobber_existing_document_type(
+    fake_supabase, fake_settings
+):
+    create_pending_document(
+        "statement.pdf",
+        USER_ID,
+        metadata={"document_type": "custom"},
+        settings=fake_settings,
+    )
+
+    row = fake_supabase.tables["documents"][0]
+    assert row["metadata"]["document_type"] == "custom"
+
+
+def test_create_pending_document_leaves_unrecognized_extension_without_document_type(
+    fake_supabase, fake_settings
+):
+    create_pending_document("notes.txt", USER_ID, settings=fake_settings)
+
+    row = fake_supabase.tables["documents"][0]
+    assert "document_type" not in row["metadata"]
 
 
 def test_process_document_marks_completed_on_success(

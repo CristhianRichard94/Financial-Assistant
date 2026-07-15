@@ -45,6 +45,31 @@ def test_search_calls_hybrid_rpc_with_embedding_and_query_text(
     assert params["match_count"] == 5
     assert params["p_user_id"] == USER_ID
     assert params["p_candidate_pool"] == 20
+    assert params["p_date_from"] is None
+    assert params["p_date_to"] is None
+    assert params["p_document_type"] is None
+
+
+def test_search_passes_filter_params_through_to_rpc_when_provided(
+    fake_supabase, fake_settings, fake_embeddings
+):
+    fake_supabase.rpc_response = []
+
+    search(
+        "How much did I spend on groceries?",
+        USER_ID,
+        k=5,
+        settings=fake_settings,
+        date_from="2026-01-01",
+        date_to="2026-03-31",
+        document_type="csv",
+    )
+
+    assert len(fake_supabase.rpc_calls) == 1
+    _, params = fake_supabase.rpc_calls[0]
+    assert params["p_date_from"] == "2026-01-01"
+    assert params["p_date_to"] == "2026-03-31"
+    assert params["p_document_type"] == "csv"
 
 
 def test_search_maps_rpc_rows_to_search_results(fake_supabase, fake_settings, fake_embeddings):
