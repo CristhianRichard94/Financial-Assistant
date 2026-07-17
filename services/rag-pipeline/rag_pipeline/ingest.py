@@ -112,7 +112,7 @@ def process_document(
     ).execute()
 
     try:
-        raw_text = parse_document(path)
+        raw_text = parse_document(path, settings=settings)
         if not raw_text:
             raise ValueError(f"No extractable text found in {path}")
 
