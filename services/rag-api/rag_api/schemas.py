@@ -24,6 +24,7 @@ class DocumentOut(BaseModel):
     size: int
     status: DocumentStatusOut
     uploaded_at: str = Field(alias="uploadedAt")
+    error_message: str | None = Field(default=None, alias="errorMessage")
 
 
 class QueryRequest(BaseModel):

@@ -114,6 +114,27 @@ def test_process_document_marks_failed_and_reraises_on_parse_error(
 
     row = next(r for r in fake_supabase.tables["documents"] if r["id"] == document_id)
     assert row["status"] == "failed"
+    assert row["metadata"]["error"] == "boom"
+    # Pre-existing metadata (set at create_pending_document time) must survive
+    # the failure update, not get clobbered.
+    assert row["metadata"]["document_type"] == "pdf"
+
+
+def test_process_document_marks_failed_with_friendly_message_on_no_extractable_text(
+    fake_supabase, fake_settings, mocker, tmp_path
+):
+    document_id = create_pending_document("landscape.jpg", USER_ID, settings=fake_settings)
+    image_path = tmp_path / "landscape.jpg"
+    image_path.write_bytes(b"not a real jpg")
+
+    mocker.patch("rag_pipeline.ingest.parse_document", return_value="")
+
+    with pytest.raises(ValueError, match="No text could be read"):
+        process_document(document_id, image_path, USER_ID, settings=fake_settings)
+
+    row = next(r for r in fake_supabase.tables["documents"] if r["id"] == document_id)
+    assert row["status"] == "failed"
+    assert "No text could be read" in row["metadata"]["error"]
 
 
 def test_process_document_marks_failed_and_reraises_on_embedding_error(
@@ -150,6 +171,7 @@ def test_mark_document_failed_sets_status(fake_supabase, fake_settings):
 
     row = next(r for r in fake_supabase.tables["documents"] if r["id"] == document_id)
     assert row["status"] == "failed"
+    assert row["metadata"]["error"] == "Failed to process this document."
 
 
 def test_ingest_document_wraps_create_and_process(

@@ -10,6 +10,7 @@ export interface Document {
   size: number;
   status: DocumentStatus;
   uploadedAt: string;
+  errorMessage?: string;
 }
 
 export interface ChatMessage {

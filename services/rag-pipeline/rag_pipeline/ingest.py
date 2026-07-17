@@ -97,8 +97,9 @@ def process_document(
     5. Mark the document "completed" (or "failed" if any step above raised).
 
     Raises ValueError if the file type is unsupported or the file has no
-    extractable text (e.g. an empty CSV or an image-only PDF), and re-raises
-    any underlying Supabase/OpenAI errors after marking the document failed.
+    extractable text (e.g. an empty CSV, an image-only PDF, or a photo with
+    no readable financial content), and re-raises any underlying
+    Supabase/OpenAI errors after marking the document failed.
     """
     settings = settings or load_settings()
     path = Path(path)
@@ -114,11 +115,19 @@ def process_document(
     try:
         raw_text = parse_document(path, settings=settings)
         if not raw_text:
-            raise ValueError(f"No extractable text found in {path}")
+            raise ValueError(
+                "No text could be read from this file. If it's a photo, make "
+                "sure it clearly shows a financial document (receipt, "
+                "statement, etc.) and try again."
+            )
 
         chunks = chunk_text(raw_text)
         if not chunks:
-            raise ValueError(f"Parsed text from {path} produced zero chunks")
+            raise ValueError(
+                "No text could be read from this file. If it's a photo, make "
+                "sure it clearly shows a financial document (receipt, "
+                "statement, etc.) and try again."
+            )
 
         embeddings = embed_texts([chunk.text for chunk in chunks], settings.openai_api_key)
 
@@ -145,11 +154,28 @@ def process_document(
             chunk_count=len(chunk_rows),
             embedding_dimensions=EMBEDDING_DIMENSIONS,
         )
-    except Exception:
-        supabase.table("documents").update({"status": "failed"}).eq(
-            "id", document_id
-        ).execute()
+    except Exception as exc:
+        _mark_failed_with_message(
+            supabase,
+            document_id,
+            str(exc) if isinstance(exc, ValueError) else "Failed to process this document.",
+        )
         raise
+
+
+def _mark_failed_with_message(supabase: Any, document_id: str, message: str) -> None:
+    """Set a `documents` row's status to "failed" and record a user-facing
+    `metadata.error` message, preserving any other metadata keys already on
+    the row (e.g. `size_bytes`, `document_type`) rather than clobbering them.
+    """
+    existing = (
+        supabase.table("documents").select("metadata").eq("id", document_id).execute()
+    )
+    merged_metadata = dict(existing.data[0]["metadata"]) if existing.data else {}
+    merged_metadata["error"] = message
+    supabase.table("documents").update(
+        {"status": "failed", "metadata": merged_metadata}
+    ).eq("id", document_id).execute()
 
 
 def mark_document_failed(document_id: str, settings: Settings | None = None) -> None:
@@ -172,9 +198,7 @@ def mark_document_failed(document_id: str, settings: Settings | None = None) -> 
     """
     settings = settings or load_settings()
     supabase = get_supabase_client(settings.supabase_url, settings.supabase_service_key)
-    supabase.table("documents").update({"status": "failed"}).eq(
-        "id", document_id
-    ).execute()
+    _mark_failed_with_message(supabase, document_id, "Failed to process this document.")
 
 
 def ingest_document(

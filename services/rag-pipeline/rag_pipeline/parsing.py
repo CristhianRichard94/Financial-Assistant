@@ -77,14 +77,14 @@ def parse_image(path: Path, settings: Settings) -> str:
     """
     if not settings.openai_api_key:
         raise ValueError(
-            f"Cannot parse image {path}: OPENAI_API_KEY is not configured. "
-            f"Set OPENAI_API_KEY in the environment or .env file."
+            "Cannot parse image: OPENAI_API_KEY is not configured. "
+            "Set OPENAI_API_KEY in the environment or .env file."
         )
 
     suffix = path.suffix.lower()
     mime_type = _IMAGE_MIME_TYPES.get(suffix)
     if mime_type is None:
-        raise ValueError(f"Unsupported image type '{suffix}' for {path}")
+        raise ValueError(f"Unsupported image type '{suffix}'")
 
     image_bytes = path.read_bytes()
     encoded_image = base64.b64encode(image_bytes).decode("ascii")
@@ -126,6 +126,5 @@ def parse_document(path: Path, settings: Settings | None = None) -> str:
         settings = settings or load_settings()
         return parse_image(path, settings)
     raise ValueError(
-        f"Unsupported file type '{suffix}' for {path}. Supported: .pdf, .csv, "
-        f".jpg, .jpeg, .png"
+        f"Unsupported file type '{suffix}'. Supported: .pdf, .csv, .jpg, .jpeg, .png"
     )
