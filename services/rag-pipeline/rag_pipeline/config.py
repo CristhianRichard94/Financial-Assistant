@@ -24,6 +24,12 @@ EMBEDDING_DIMENSIONS = 1536
 # family), used here purely for token counting during chunking.
 TOKEN_ENCODING = "cl100k_base"
 
+# Vision-capable chat model used to transcribe text out of uploaded image
+# documents (receipts, statements, invoices) in parsing.py. Kept in sync with
+# the chat model naming convention already used in services/rag-api
+# (rag_api/config.py's OPENAI_CHAT_MODEL = "gpt-5").
+VISION_MODEL = "gpt-5"
+
 # Chunking defaults.
 CHUNK_SIZE_TOKENS = 500
 CHUNK_OVERLAP_TOKENS = 50
