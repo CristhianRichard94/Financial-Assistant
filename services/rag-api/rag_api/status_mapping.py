@@ -42,6 +42,7 @@ def _size_bytes_from_metadata(metadata: dict[str, Any]) -> int:
 def document_record_to_out(record: DocumentRecord) -> DocumentOut:
     """Convert a rag_pipeline `DocumentRecord` into the frontend-facing shape."""
     status = STATUS_MAP.get(record.status, "error")
+    error_message = record.metadata.get("error")
     return DocumentOut(
         id=record.id,
         name=record.filename,
@@ -49,4 +50,5 @@ def document_record_to_out(record: DocumentRecord) -> DocumentOut:
         size=_size_bytes_from_metadata(record.metadata),
         status=status,
         uploaded_at=record.upload_date,
+        error_message=error_message if isinstance(error_message, str) else None,
     )

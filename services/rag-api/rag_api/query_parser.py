@@ -120,6 +120,7 @@ def parse_query(question: str, settings: RagApiSettings) -> ParsedQuery:
     ParsedQuery that just passes `question` through unchanged (see
     `_default_parsed_query`), so retrieval still works if parsing fails.
     """
+    content: str | None = None
     try:
         client = get_client(settings.openai_api_key)
         response = client.chat.completions.create(
@@ -152,5 +153,9 @@ def parse_query(question: str, settings: RagApiSettings) -> ParsedQuery:
             entities=list(payload.get("entities") or []),
         )
     except Exception:
-        logger.exception("Failed to parse query; falling back to raw question")
+        logger.exception(
+            "Failed to parse query; falling back to raw question. "
+            "Raw model content (truncated): %r",
+            content[:200] if content else content,
+        )
         return _default_parsed_query(question)

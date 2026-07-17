@@ -31,6 +31,7 @@ def test_get_documents_returns_mapped_documents(client, mocker):
             "size": 2048,
             "status": "processed",
             "uploadedAt": "2026-07-01T00:00:00+00:00",
+            "errorMessage": None,
         }
     ]
 
