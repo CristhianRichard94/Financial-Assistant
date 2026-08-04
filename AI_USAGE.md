@@ -377,7 +377,7 @@ because the same route logic had to be kept in sync across two servers.
 
 ## Claude Code Skills
 
-Two Skills added 2026-07-06 in `.claude/skills/`, both referenced from `replit.md`'s
+Two Skills added 2026-07-06 in `.claude/skills/`, both referenced from `DECISIONS.md`'s
 Pointers section:
 
 | Skill | Covers |

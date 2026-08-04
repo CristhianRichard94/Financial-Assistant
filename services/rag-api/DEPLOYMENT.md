@@ -141,9 +141,9 @@ this stack is deployed in. This is not required to use the API.)
 
 ## 7. Point the frontend at the deployed API
 
-Set these in the frontend's server-side environment (e.g. Replit's
-deployment secrets/environment variables, or `artifacts/finsight/.env.local`
-for local testing):
+Set these in the frontend's server-side environment (e.g. your frontend
+host's environment variables, such as Vercel project env vars, or
+`artifacts/finsight/.env.local` for local testing):
 
 ```
 RAG_API_BASE_URL=https://d1234abcdefgh.cloudfront.net
@@ -159,7 +159,7 @@ to the ALB or CloudFront distribution directly, so no CORS configuration is
 needed on this service, and `RAG_API_INTERNAL_KEY` never needs to exist in
 client-side code (don't change that).
 
-This is now a real internet-facing HTTPS endpoint, reachable from Replit's
+This is now a real internet-facing HTTPS endpoint, reachable from the
 deployed frontend or anywhere else on the internet - there is no VPC or
 network-level trust boundary. Restricting the ALB's security group to
 CloudFront's IP ranges only stops people from bypassing CloudFront and

@@ -74,7 +74,7 @@ class RagApiStack(Stack):
             memory_limit_mib=1024,
             desired_count=1,
             # Public, HTTP-only ALB: the frontend (Next.js/Express) is
-            # deployed on Replit's autoscale platform, a separate cloud with
+            # deployed on a separate hosting platform, a separate cloud with
             # no private network path into this AWS VPC, so an internal ALB
             # is not reachable from it. `public_load_balancer=True` attaches
             # the ALB to an internet gateway so the CloudFront distribution
@@ -142,8 +142,6 @@ class RagApiStack(Stack):
                         ".claude",
                         ".git",
                         ".npmrc",
-                        ".replit",
-                        ".replitignore",
                         ".venv",
                         ".worktrees",
                         "AI_USAGE.md",
@@ -157,8 +155,7 @@ class RagApiStack(Stack):
                         "package.json",
                         "pnpm-lock.yaml",
                         "pnpm-workspace.yaml",
-                        "replit.md",
-                        "scripts",
+                        "DECISIONS.md",
                         "tsconfig.base.json",
                         "tsconfig.json",
                         # Within services/, drop this stack's own CDK

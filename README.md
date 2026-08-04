@@ -51,7 +51,7 @@ Supabase (Postgres + pgvector)
 - **RAG backend**: a standalone Python service pair — `rag-pipeline` (ingestion/search library) and `rag-api` (FastAPI HTTP wrapper + Claude-powered answer synthesis) — with its own Supabase project and Python dependencies, decoupled from the rest of the monorepo.
 - **Dashboard data** (income/spending/savings summary and activity feed) is still served from an in-memory mock store; documents and chat are wired to the real RAG backend.
 
-See [`replit.md`](./replit.md) for the day-to-day architecture-decisions log kept alongside this codebase.
+See [`DECISIONS.md`](./DECISIONS.md) for the day-to-day architecture-decisions log kept alongside this codebase.
 
 ## Authentication
 
@@ -73,13 +73,12 @@ Uses `@supabase/ssr` and `@supabase/supabase-js` for session handling on both se
 │   ├── db/                 Drizzle schema/client (@workspace/db)
 │   ├── api-spec/           OpenAPI spec + orval codegen config
 │   └── api-zod/            Generated Zod schemas (@workspace/api-zod)
-├── scripts/                post-merge.sh (Replit post-merge hook, see .replit)
 ├── services/
 │   ├── rag-pipeline/       Python: parse → chunk → embed → store → search (Supabase/pgvector)
 │   └── rag-api/            Python: FastAPI wrapper over rag-pipeline + Claude synthesis, AWS CDK deploy artifacts
 ├── .claude/                Claude Code agents/skills configured for this repo
 ├── CLAUDE.md               Team workflow instructions for AI-assisted development
-├── replit.md               Architecture/decisions notes (Replit Agent's memory file)
+├── DECISIONS.md            Architecture/decisions notes
 ├── BACKLOG.md              Assignment checklist mapped to implementation status
 └── AI_USAGE.md             Log of how AI tools were used to build this project
 ```
@@ -198,7 +197,7 @@ for what happens behind that proxy.
 ## Project docs
 
 - [`CLAUDE.md`](./CLAUDE.md) — the team workflow this project follows for AI-assisted feature development (design → branch → implement → review → merge)
-- [`replit.md`](./replit.md) — architecture decisions and gotchas, kept up to date as the codebase evolves
+- [`DECISIONS.md`](./DECISIONS.md) — architecture decisions and gotchas, kept up to date as the codebase evolves
 - [`BACKLOG.md`](./BACKLOG.md) — the original assignment checklist mapped to what's actually implemented/verified
 - [`AI_USAGE.md`](./AI_USAGE.md) — a log of how AI tools were used to build this project
 - [`services/rag-pipeline/README.md`](./services/rag-pipeline/README.md) — RAG ingestion/search library setup

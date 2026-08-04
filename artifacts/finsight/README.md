@@ -42,8 +42,9 @@ Supabase project and have their own callback URL).
      http://localhost:<PORT>/auth/callback
      https://your-production-domain.example/auth/callback
      ```
-     (`<PORT>` is whatever `PORT`/`.replit-artifact/artifact.toml` configures
-     for this environment - see `localPort`/`PORT` there for the default.)
+     (`<PORT>` is whatever the `PORT` environment variable is set to for this
+     environment - see the `dev`/`start` scripts in `package.json`, which
+     default to `23970` (via `${PORT:-23970}`) if `PORT` is unset.)
 
 Without all three of the above, `signInWithOAuth({ provider: "google" })`
 will either fail outright or redirect the user to an unrecognized URL after
