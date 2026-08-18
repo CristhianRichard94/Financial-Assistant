@@ -187,7 +187,7 @@ for what happens behind that proxy.
 ## Deployment status
 
 - The frontend (with its Next.js API routes) is deployed to Vercel:
-  https://finsight-kappa-blush.vercel.app. `NEXT_PUBLIC_SUPABASE_URL` and
+  [https://finsight-assistant.vercel.app](https://finsight-assistant.vercel.app/). `NEXT_PUBLIC_SUPABASE_URL` and
   `NEXT_PUBLIC_SUPABASE_ANON_KEY` are configured there; `RAG_API_BASE_URL`
   and `RAG_API_INTERNAL_KEY` are **not** set yet (rag-api isn't deployed —
   see below), so `/documents` and `/chat` will error until those are added
