@@ -18,11 +18,21 @@ OTHER_TEST_USER_ID = "22222222-2222-2222-2222-222222222222"
 
 
 @pytest.fixture(autouse=True)
-def rag_api_settings_env(monkeypatch):
+def rag_api_settings_env(monkeypatch, tmp_path):
     """RagApiSettings requires OPENAI_API_KEY and INTERNAL_API_KEY; give
-    every test fake values for both."""
+    every test fake values for both.
+
+    Also points AGENT_CHECKPOINT_DB_PATH at a fresh per-test temp file, so
+    the agent's LangGraph checkpointer (see rag_api/agent/graph.py) never
+    leaks conversation history between unrelated tests that happen to reuse
+    the same conversation_id (or none) - each test gets its own SQLite file
+    and thus its own entry in the module-level checkpointer cache.
+    """
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key")
     monkeypatch.setenv("INTERNAL_API_KEY", TEST_INTERNAL_API_KEY)
+    monkeypatch.setenv(
+        "AGENT_CHECKPOINT_DB_PATH", str(tmp_path / "agent_checkpoints_test.sqlite")
+    )
 
 
 @pytest.fixture

@@ -52,10 +52,16 @@ def refine_node(state: AgentState) -> dict:
 
 
 def generate_node(state: AgentState, settings: RagApiSettings) -> dict:
+    history = state.get("messages", [])
     answer, sources = openai_client.ask_openai(
-        state["question"], state.get("results", []), settings
+        state["question"], state.get("results", []), settings, history=history
     )
-    return {"answer": answer, "sources": sources}
+    updated_messages = [
+        *history,
+        {"role": "user", "content": state["question"]},
+        {"role": "assistant", "content": answer},
+    ]
+    return {"answer": answer, "sources": sources, "messages": updated_messages}
 
 
 def route_after_parse(state: AgentState) -> str:

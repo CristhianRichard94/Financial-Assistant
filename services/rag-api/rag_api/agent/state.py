@@ -30,3 +30,12 @@ class AgentState(TypedDict, total=False):
     # set by generate_node (or the out-of-scope short-circuit)
     answer: str
     sources: list[SourceOut]
+
+    # Multi-turn conversation history, persisted across calls to the graph
+    # by the checkpointer keyed on thread_id (see graph.py). Each entry is
+    # {"role": "user" | "assistant", "content": str}, accumulated by
+    # generate_node after every answered turn. Kept as raw question/answer
+    # pairs (not the retrieval-augmented prompt with excerpts) so history
+    # replayed into later prompts stays small and reflects what the user
+    # actually asked/was told, not the retrieved document text of past turns.
+    messages: list[dict[str, str]]

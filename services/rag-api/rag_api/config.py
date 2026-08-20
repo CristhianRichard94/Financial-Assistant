@@ -34,6 +34,17 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB, matches the frontend's own limit.
 
 ALLOWED_EXTENSIONS = {".pdf", ".csv", ".jpg", ".jpeg", ".png"}
 
+# Default path for the agent's LangGraph checkpointer (see
+# rag_api/agent/graph.py) to persist conversation state. SQLite-file-backed
+# rather than in-memory so conversation history survives across requests
+# within a single running process (in-memory would be lost the instant the
+# request-handling coroutine returns). Overridable via the
+# AGENT_CHECKPOINT_DB_PATH env var - see `load_rag_api_settings` below,
+# which re-reads the env var per call (unlike OPENAI_CHAT_MODEL above, this
+# one is deliberately re-read rather than frozen at import time, so tests
+# can point each test run at its own isolated file via monkeypatch).
+DEFAULT_AGENT_CHECKPOINT_DB_PATH = "agent_checkpoints.sqlite"
+
 
 class MissingEnvironmentVariable(RuntimeError):
     """Raised when a required environment variable is not set."""
@@ -46,6 +57,7 @@ class RagApiSettings:
     openai_chat_model: str = OPENAI_CHAT_MODEL
     max_upload_bytes: int = MAX_UPLOAD_BYTES
     allowed_extensions: frozenset[str] = frozenset(ALLOWED_EXTENSIONS)
+    agent_checkpoint_db_path: str = DEFAULT_AGENT_CHECKPOINT_DB_PATH
 
 
 def _require_env(name: str) -> str:
@@ -71,4 +83,7 @@ def load_rag_api_settings() -> RagApiSettings:
     return RagApiSettings(
         openai_api_key=_require_env("OPENAI_API_KEY"),
         internal_api_key=_require_env("INTERNAL_API_KEY"),
+        agent_checkpoint_db_path=os.environ.get(
+            "AGENT_CHECKPOINT_DB_PATH", DEFAULT_AGENT_CHECKPOINT_DB_PATH
+        ),
     )

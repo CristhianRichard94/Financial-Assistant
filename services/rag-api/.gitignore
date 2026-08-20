@@ -14,3 +14,10 @@ dist/
 infra/cdk.out/
 infra/.venv/
 infra/cdk.context.json
+
+# Agent conversation-memory checkpoint DB (see rag_api/agent/graph.py,
+# AGENT_CHECKPOINT_DB_PATH in rag_api/config.py) - local dev artifact, not
+# part of the source tree.
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

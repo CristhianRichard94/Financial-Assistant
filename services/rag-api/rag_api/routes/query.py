@@ -7,6 +7,7 @@ can patch `rag_pipeline.search` directly.
 from __future__ import annotations
 
 import logging
+import uuid
 
 import rag_pipeline
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -66,11 +67,19 @@ def query_agent(request: QueryRequest, user_id: str = Depends(require_user_id)) 
     """Same contract as /query, but answered by the LangGraph agent (see
     rag_api/agent/graph.py): parse -> retrieve -> retry with broadened
     filters on an empty hit -> generate, instead of one straight-line pass.
+
+    Also carries multi-turn conversation memory: pass back the
+    `conversation_id` returned by a prior call to let the agent see that
+    conversation's earlier turns (see AgentState.messages and
+    rag_api/agent/graph.py's checkpointer). If `request.conversation_id` is
+    omitted, a new one is generated and returned for the caller to reuse on
+    the next turn.
     """
     settings = load_rag_api_settings()
+    conversation_id = request.conversation_id or str(uuid.uuid4())
 
     try:
-        final_state = run_agent_query(request.question, user_id, settings)
+        final_state = run_agent_query(request.question, user_id, conversation_id, settings)
     except Exception:
         logger.exception("Failed to answer query via agent")
         raise HTTPException(
@@ -78,4 +87,8 @@ def query_agent(request: QueryRequest, user_id: str = Depends(require_user_id)) 
             detail="Failed to answer question.",
         ) from None
 
-    return QueryResponse(answer=final_state["answer"], sources=final_state.get("sources", []))
+    return QueryResponse(
+        answer=final_state["answer"],
+        sources=final_state.get("sources", []),
+        conversation_id=conversation_id,
+    )

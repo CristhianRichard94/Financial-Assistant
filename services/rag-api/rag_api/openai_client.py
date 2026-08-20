@@ -101,8 +101,16 @@ def ask_openai(
     question: str,
     results: list[SearchResult],
     settings: RagApiSettings,
+    history: list[dict[str, str]] | None = None,
 ) -> tuple[str, list[SourceOut]]:
     """Ask OpenAI to synthesize an answer from the retrieved chunks.
+
+    `history`, if given, is a list of prior {"role", "content"} turns (see
+    AgentState.messages in rag_api/agent/state.py) inserted between the
+    system prompt and the current turn's retrieval-augmented prompt, so the
+    model can see earlier questions/answers in the same conversation. Only
+    the agentic /query/agent flow passes this; the plain /query route
+    remains single-turn and always calls this with history=None.
 
     Returns (answer_text, sources), where sources are the unique
     filename/similarity pairs from `results` (in their original ranked order).
@@ -118,6 +126,7 @@ def ask_openai(
         max_completion_tokens=MAX_TOKENS,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
+            *(history or []),
             {"role": "user", "content": prompt},
         ],
     )
