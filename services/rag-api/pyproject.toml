@@ -14,6 +14,7 @@ dependencies = [
     "uvicorn[standard]>=0.30.0",
     "openai>=1.40.0",
     "python-multipart>=0.0.9",
+    "langgraph>=0.2.0",
     # Local path dependency on the sibling rag-pipeline package. `{root:uri}`
     # is a Hatchling build-time context variable that expands to this
     # package's own directory as a file:// URI, so this resolves relative to

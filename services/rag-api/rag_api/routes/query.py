@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from rag_pipeline.config import DEFAULT_MATCH_COUNT
 
 from rag_api import openai_client, query_parser
+from rag_api.agent.graph import run_agent_query
 from rag_api.auth import require_internal_api_key, require_user_id
 from rag_api.config import load_rag_api_settings
 from rag_api.schemas import QueryRequest, QueryResponse
@@ -58,3 +59,23 @@ def query(request: QueryRequest, user_id: str = Depends(require_user_id)) -> Que
         ) from None
 
     return QueryResponse(answer=answer, sources=sources)
+
+
+@router.post("/query/agent", response_model=QueryResponse)
+def query_agent(request: QueryRequest, user_id: str = Depends(require_user_id)) -> QueryResponse:
+    """Same contract as /query, but answered by the LangGraph agent (see
+    rag_api/agent/graph.py): parse -> retrieve -> retry with broadened
+    filters on an empty hit -> generate, instead of one straight-line pass.
+    """
+    settings = load_rag_api_settings()
+
+    try:
+        final_state = run_agent_query(request.question, user_id, settings)
+    except Exception:
+        logger.exception("Failed to answer query via agent")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to answer question.",
+        ) from None
+
+    return QueryResponse(answer=final_state["answer"], sources=final_state.get("sources", []))
