@@ -159,20 +159,19 @@ function StatCardSkeleton() {
   );
 }
 
-function RetryError({ message, onRetry }: { message: string; onRetry: () => void }) {
+function InlineRetry({ onRetry }: { onRetry: () => void }) {
   const t = useTranslations("dashboard");
   return (
-    <div
-      role="alert"
-      aria-live="polite"
-      className="flex flex-col items-center justify-center gap-3 py-16 text-center"
-    >
-      <AlertCircle className="w-10 h-10 text-[hsl(var(--muted-foreground))]/40" />
-      <p className="text-sm text-[hsl(var(--muted-foreground))]">{message}</p>
-      <Button variant="outline" size="sm" onClick={onRetry}>
-        {t("tryAgain")}
-      </Button>
-    </div>
+    <p className="text-xs text-[hsl(var(--muted-foreground))]">
+      {t("retryInlinePrompt")}{" "}
+      <button
+        type="button"
+        onClick={onRetry}
+        className="font-medium underline underline-offset-4 hover:text-[hsl(var(--foreground))]"
+      >
+        {t("retryInlineAction")}
+      </button>
+    </p>
   );
 }
 
@@ -211,11 +210,22 @@ function ZeroTransactionsBanner() {
   );
 }
 
-function PanelEmptyMessage({ message }: { message: string }) {
+function SummaryUnavailableNotice({ onRetry }: { onRetry: () => void }) {
+  const t = useTranslations("dashboard");
+  return (
+    <div className="sm:col-span-3 flex flex-col items-center justify-center gap-2 px-6 py-10 text-center bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl">
+      <p className="text-sm text-[hsl(var(--muted-foreground))]">{t("summaryUnavailable")}</p>
+      <InlineRetry onRetry={onRetry} />
+    </div>
+  );
+}
+
+function PanelEmptyMessage({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
     <div className="px-6 py-12 flex flex-col items-center justify-center text-center gap-2">
       <Inbox className="w-8 h-8 text-[hsl(var(--muted-foreground))]/40" />
       <p className="text-sm text-[hsl(var(--muted-foreground))]">{message}</p>
+      {onRetry && <InlineRetry onRetry={onRetry} />}
     </div>
   );
 }
@@ -287,9 +297,7 @@ export function DashboardView() {
                 <StatCardSkeleton />
               </>
             ) : summaryError ? (
-              <div className="sm:col-span-3">
-                <RetryError message={t("summaryError")} onRetry={() => refetchSummary()} />
-              </div>
+              <SummaryUnavailableNotice onRetry={() => refetchSummary()} />
             ) : summary ? (
               <>
                 <StatCard
@@ -334,7 +342,10 @@ export function DashboardView() {
                     </div>
                   ))
                 ) : activityError ? (
-                  <RetryError message={t("activityError")} onRetry={() => refetchActivity()} />
+                  <PanelEmptyMessage
+                    message={t("activityUnavailable")}
+                    onRetry={() => refetchActivity()}
+                  />
                 ) : activity && activity.length === 0 ? (
                   <PanelEmptyMessage message={t("noTransactionsYet")} />
                 ) : (
@@ -387,7 +398,10 @@ export function DashboardView() {
                     </div>
                   ))
                 ) : summaryError ? (
-                  <RetryError message={t("categoryError")} onRetry={() => refetchSummary()} />
+                  <PanelEmptyMessage
+                    message={t("categoryError")}
+                    onRetry={() => refetchSummary()}
+                  />
                 ) : summary && summary.categoryBreakdown.length === 0 ? (
                   <PanelEmptyMessage message={t("noSpendingYet")} />
                 ) : (

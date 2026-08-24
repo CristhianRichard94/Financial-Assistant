@@ -188,7 +188,7 @@ describe("DashboardView", () => {
     expect(screen.getByText("No spending data to show yet.")).toBeInTheDocument();
   });
 
-  it("shows a retry error for the summary-driven regions when the summary request fails, independent of activity", async () => {
+  it("shows a subtle summary-unavailable notice (not the get-started onboarding screen) when only the summary request fails", async () => {
     mockFetchSequence([
       { url: "/api/dashboard/summary", ok: false, status: 500, body: {} },
       { url: "/api/dashboard/activity", body: activity },
@@ -197,19 +197,32 @@ describe("DashboardView", () => {
     renderWithClient(<DashboardView />);
 
     await waitFor(() =>
-      expect(
-        screen.getByText("Couldn't load your dashboard summary. Please try again.")
-      ).toBeInTheDocument()
+      expect(screen.getByText("We couldn't load your summary right now.")).toBeInTheDocument()
     );
-    const alerts = screen.getAllByRole("alert");
-    expect(alerts.length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Try again").length).toBeGreaterThan(0);
 
-    // Activity loaded fine independently, so its region should still render.
+    // This is not the zero-docs onboarding empty state.
+    expect(screen.queryByText("Get started")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Upload your financial documents to see your dashboard.")
+    ).not.toBeInTheDocument();
+
+    // No alarming alert-styled error should be rendered for this case.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    // The de-emphasized retry affordance is still available and wired to refetch
+    // (once for the stat cards notice, once for the category breakdown panel,
+    // since both depend on the failed summary request).
+    expect(screen.getAllByText("Having trouble loading your data?").length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "Retry" }).length).toBeGreaterThan(0);
+
+    // The independently-successful activity request still renders its data.
     await waitFor(() => expect(screen.getByText("Whole Foods Market")).toBeInTheDocument());
+
+    // Stat cards themselves are replaced by the notice, since they depend on summary data.
+    expect(screen.queryByText("Total Income")).not.toBeInTheDocument();
   });
 
-  it("shows a retry error only for the activity region when just the activity request fails", async () => {
+  it("shows a lightweight empty-panel message with retry only for the activity region when just the activity request fails", async () => {
     mockFetchSequence([
       { url: "/api/dashboard/summary", body: happySummary },
       { url: "/api/dashboard/activity", ok: false, status: 500, body: {} },
@@ -219,10 +232,10 @@ describe("DashboardView", () => {
 
     await waitFor(() => expect(screen.getByText("Total Income")).toBeInTheDocument());
     await waitFor(() =>
-      expect(
-        screen.getByText("Couldn't load recent activity. Please try again.")
-      ).toBeInTheDocument()
+      expect(screen.getByText("Recent activity is unavailable right now.")).toBeInTheDocument()
     );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
     expect(screen.getByText("$8,450")).toBeInTheDocument();
   });
 });
