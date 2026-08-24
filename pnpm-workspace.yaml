@@ -3,6 +3,8 @@ packages:
   - lib/*
 
 allowBuilds:
+  '@parcel/watcher': true
+  '@swc/core': true
   esbuild: true
   msw: true
   sharp: true
