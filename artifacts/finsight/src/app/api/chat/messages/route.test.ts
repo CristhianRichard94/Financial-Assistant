@@ -134,7 +134,7 @@ describe("POST /api/chat/messages", () => {
     const body = await res.json();
 
     expect(res.status).toBe(400);
-    expect(body).toEqual({ error: "Invalid message" });
+    expect(body).toEqual({ error: "message_invalid" });
   });
 
   it("returns 400 when content is missing", async () => {

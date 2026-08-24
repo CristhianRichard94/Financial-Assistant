@@ -5,11 +5,35 @@ import { useEffect, useRef, useState, KeyboardEvent } from "react";
 import { Send, Bot, User, Loader2, FileText, AlertCircle, Clock } from "lucide-react";
 import { nanoid } from "nanoid";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import { cn, formatDate } from "@/lib/utils";
 import Link from "next/link";
 import type { ChatMessage, Document } from "@/lib/store";
 
 type OptimisticStatus = "pending" | "failed";
+
+/** Maps a server-returned machine-readable error code (see
+ * `src/app/api/chat/messages/route.ts`) to a translated user-facing
+ * message, falling back to `errors.generic` for unknown codes (including
+ * network failures, which never produce a code at all). */
+function useErrorMessage() {
+  const t = useTranslations("errors");
+  return (code: string | undefined) => {
+    if (code && t.has(code)) {
+      return t(code);
+    }
+    return t("generic");
+  };
+}
+
+async function extractErrorCode(res: Response): Promise<string | undefined> {
+  try {
+    const body = await res.json();
+    return typeof body?.error === "string" ? body.error : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /** A chat message as rendered in the transcript. Optimistic user messages
  * carry a `status` while they are in flight or have failed to send; server
@@ -45,6 +69,7 @@ function MessageBubble({
   msg: DisplayMessage;
   onRetryFailed?: (msg: DisplayMessage) => void;
 }) {
+  const t = useTranslations("chat");
   const isUser = msg.role === "user";
   const isPending = isUser && msg.status === "pending";
   const isFailed = isUser && msg.status === "failed";
@@ -75,7 +100,7 @@ function MessageBubble({
           }
           role={isFailed ? "button" : undefined}
           tabIndex={isFailed ? 0 : undefined}
-          aria-label={isFailed ? "Message not sent. Press Enter to edit and resend." : undefined}
+          aria-label={isFailed ? t("notSentAriaLabel") : undefined}
           className={cn(
             "px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap",
             isUser
@@ -93,7 +118,7 @@ function MessageBubble({
           {isPending && (
             <span className="inline-flex items-center gap-1 text-[hsl(var(--muted-foreground))]">
               <Clock className="w-3 h-3" aria-hidden="true" />
-              <span className="sr-only">Sending…</span>
+              <span className="sr-only">{t("sending")}</span>
             </span>
           )}
 
@@ -104,11 +129,11 @@ function MessageBubble({
           {isFailed && (
             <span
               role="status"
-              aria-label="Message not sent"
+              aria-label={t("notSent")}
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-400"
             >
               <AlertCircle className="w-3 h-3" aria-hidden="true" />
-              Not sent
+              {t("notSent")}
             </span>
           )}
         </div>
@@ -139,6 +164,8 @@ function TypingIndicator() {
 }
 
 export function ChatView() {
+  const t = useTranslations("chat");
+  const getErrorMessage = useErrorMessage();
   const queryClient = useQueryClient();
   const { data: messages, isLoading, isError } = useMessages();
   const { data: documents } = useDocuments();
@@ -183,7 +210,10 @@ export function ChatView() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content }),
       });
-      if (!res.ok) throw new Error("Failed to send");
+      if (!res.ok) {
+        const code = await extractErrorCode(res);
+        throw new Error(code);
+      }
       return res.json();
     },
     onSuccess: async () => {
@@ -194,11 +224,11 @@ export function ChatView() {
       // hasn't settled yet, which is what closes the duplicate-bubble race.
       await queryClient.invalidateQueries({ queryKey: ["chat", "messages"] });
     },
-    onError: (_error, variables) => {
+    onError: (error, variables) => {
       setOptimisticMessages((prev) =>
         prev.map((m) => (m.id === variables.clientId ? { ...m, status: "failed" } : m))
       );
-      toast.error("Your message couldn't be sent. Please try again.");
+      toast.error(getErrorMessage(error.message));
     },
   });
 
@@ -279,10 +309,7 @@ export function ChatView() {
     // still null.
     if (!messages) {
       if (!isLoading) {
-        toast.error(
-          "Couldn't load message history yet. Please wait for it to finish loading before sending.",
-          { id: "chat-history-error" }
-        );
+        toast.error(t("historyNotLoaded"), { id: "chat-history-error" });
       }
       return;
     }
@@ -320,11 +347,9 @@ export function ChatView() {
             <Bot className="w-5 h-5 text-white" />
           </div>
           <div>
-            <p className="font-semibold text-[hsl(var(--foreground))] text-sm">FinSight AI</p>
+            <p className="font-semibold text-[hsl(var(--foreground))] text-sm">{t("aiName")}</p>
             <p className="text-xs text-[hsl(var(--muted-foreground))]">
-              {hasDocuments
-                ? "Ready to analyze your finances"
-                : "Upload documents to unlock full analysis"}
+              {hasDocuments ? t("readyToAnalyze") : t("uploadToUnlock")}
             </p>
           </div>
         </div>
@@ -346,7 +371,7 @@ export function ChatView() {
           // normal list/empty-state branches below instead.
           <div className="flex flex-col items-center justify-center h-full py-16 text-center">
             <AlertCircle className="w-10 h-10 text-[hsl(var(--muted-foreground))]/40 mb-3" />
-            <p className="text-sm text-[hsl(var(--muted-foreground))]">Couldn&apos;t load messages. Please try again.</p>
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">{t("loadError")}</p>
           </div>
         ) : !displayMessages.length ? (
           <div className="flex flex-col items-center justify-center h-full py-16 text-center space-y-4">
@@ -354,9 +379,9 @@ export function ChatView() {
               <Bot className="w-8 h-8 text-[hsl(var(--accent-foreground))]" />
             </div>
             <div>
-              <h3 className="font-semibold text-[hsl(var(--foreground))]">Welcome to FinSight</h3>
+              <h3 className="font-semibold text-[hsl(var(--foreground))]">{t("welcomeTitle")}</h3>
               <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1 max-w-sm">
-                Ask me anything about your finances. I can analyze income, spending patterns, and more.
+                {t("welcomeDescription")}
               </p>
             </div>
           </div>
@@ -375,11 +400,11 @@ export function ChatView() {
         <div className="mx-4 lg:mx-8 mb-3 flex items-center gap-3 px-4 py-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg text-sm">
           <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
           <span className="text-amber-700 dark:text-amber-400 flex-1">
-            No processed documents yet.{" "}
+            {t("noDocumentsCallout")}{" "}
             <Link href="/documents" className="font-medium underline">
-              Upload a document
+              {t("uploadADocument")}
             </Link>{" "}
-            to enable full financial analysis.
+            {t("toEnableFullAnalysis")}
           </span>
         </div>
       )}
@@ -395,9 +420,7 @@ export function ChatView() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={
-                hasDocuments
-                  ? "Ask me about your finances…"
-                  : "Ask me anything…"
+                hasDocuments ? t("placeholderWithDocs") : t("placeholderNoDocs")
               }
               className="w-full resize-none rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-4 py-3 pr-12 text-sm placeholder:text-[hsl(var(--muted-foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))] disabled:opacity-50 transition-colors min-h-[48px] max-h-40"
               style={{ fieldSizing: "content" } as React.CSSProperties}
@@ -412,7 +435,7 @@ export function ChatView() {
           </button>
         </div>
         <p className="text-xs text-[hsl(var(--muted-foreground))] mt-2 text-center max-w-4xl mx-auto">
-          Enter to send · Shift+Enter for new line
+          {t("sendHint")}
         </p>
       </div>
     </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
@@ -10,30 +11,25 @@ import { safeRedirect } from "@/lib/safeRedirect";
 
 export type LoginErrorReason = "cancelled" | "failed";
 
-const ERROR_COPY: Record<LoginErrorReason, { title: string; description: string }> = {
-  cancelled: {
-    title: "Sign-in was cancelled",
-    description: "You can try again whenever you're ready.",
-  },
-  failed: {
-    title: "Something went wrong",
-    description: "We couldn't sign you in. Please try again.",
-  },
-};
-
 interface LoginFormProps {
   error?: LoginErrorReason;
   redirectTo?: string;
 }
 
 export function LoginForm({ error: initialError, redirectTo }: LoginFormProps) {
+  const t = useTranslations("auth.login");
   const [isRedirecting, setIsRedirecting] = useState(false);
   // Starts from the `?error=` query param (set by the OAuth callback route),
   // but can also be set locally if `signInWithOAuth` itself fails before the
   // browser ever navigates away (misconfigured provider, network failure,
   // etc.) - see the catch block below.
   const [error, setError] = useState<LoginErrorReason | undefined>(initialError);
-  const errorCopy = error ? ERROR_COPY[error] : null;
+  const errorCopy = error
+    ? {
+        title: t(`errors.${error}.title`),
+        description: t(`errors.${error}.description`),
+      }
+    : null;
 
   async function handleSignIn() {
     setIsRedirecting(true);
@@ -75,7 +71,7 @@ export function LoginForm({ error: initialError, redirectTo }: LoginFormProps) {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-[hsl(var(--background))] px-4 py-12">
-      <h1 className="sr-only">Sign in to FinSight</h1>
+      <h1 className="sr-only">{t("title")}</h1>
       <div className="w-full max-w-sm flex flex-col items-center gap-8">
         <BrandLockup />
 
@@ -101,12 +97,12 @@ export function LoginForm({ error: initialError, redirectTo }: LoginFormProps) {
             {isRedirecting ? (
               <>
                 <Spinner className="size-4" />
-                Redirecting…
+                {t("redirecting")}
               </>
             ) : (
               <>
                 <img src="/google-logo.svg" alt="" width={18} height={18} />
-                Sign in with Google
+                {t("signInWithGoogle")}
               </>
             )}
           </Button>

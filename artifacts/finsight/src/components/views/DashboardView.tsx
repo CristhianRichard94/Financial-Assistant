@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { TrendingUp, TrendingDown, Minus, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import type { DashboardSummary, Transaction } from "@/lib/store";
 
@@ -40,6 +41,7 @@ function StatCard({
   docCount?: number;
   positive: boolean;
 }) {
+  const t = useTranslations("dashboard");
   const TrendIcon = trend > 0 ? TrendingUp : trend < 0 ? TrendingDown : Minus;
   const trendLabel = trend > 0 ? `+${trend}%` : `${trend}%`;
 
@@ -56,7 +58,7 @@ function StatCard({
           )}
         >
           <TrendIcon className="w-3 h-3" />
-          {trendLabel} vs last month
+          {trendLabel} {t("vsLastMonth")}
         </span>
       </div>
       <p className="text-3xl font-bold tracking-tight text-[hsl(var(--foreground))]">
@@ -64,7 +66,7 @@ function StatCard({
       </p>
       {docCount !== undefined && (
         <p className="text-xs text-[hsl(var(--muted-foreground))]">
-          Analyzed from {docCount} document{docCount !== 1 ? "s" : ""}
+          {t("analyzedFrom", { count: docCount })}
         </p>
       )}
     </div>
@@ -85,15 +87,16 @@ function StatCardSkeleton() {
 }
 
 export function DashboardView() {
+  const t = useTranslations("dashboard");
   const { data: summary, isLoading: summaryLoading } = useDashboardSummary();
   const { data: activity, isLoading: activityLoading } = useActivity();
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-[hsl(var(--foreground))]">Overview</h1>
+        <h1 className="text-2xl font-bold text-[hsl(var(--foreground))]">{t("title")}</h1>
         <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
-          Your financial snapshot for this month
+          {t("subtitle")}
         </p>
       </div>
 
@@ -108,20 +111,20 @@ export function DashboardView() {
         ) : summary ? (
           <>
             <StatCard
-              label="Total Income"
+              label={t("totalIncome")}
               value={summary.totalIncome}
               trend={summary.incomeTrend}
               docCount={summary.documentCount}
               positive={summary.incomeTrend >= 0}
             />
             <StatCard
-              label="Total Spending"
+              label={t("totalSpending")}
               value={summary.totalSpending}
               trend={summary.spendingTrend}
               positive={summary.spendingTrend <= 0}
             />
             <StatCard
-              label="Net Savings"
+              label={t("netSavings")}
               value={summary.netSavings}
               trend={summary.savingsTrend}
               positive={summary.savingsTrend >= 0}
@@ -134,7 +137,7 @@ export function DashboardView() {
         {/* Recent Activity */}
         <div className="lg:col-span-3 bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl shadow-sm">
           <div className="px-6 py-4 border-b border-[hsl(var(--border))]">
-            <h2 className="font-semibold text-[hsl(var(--foreground))]">Recent Activity</h2>
+            <h2 className="font-semibold text-[hsl(var(--foreground))]">{t("recentActivity")}</h2>
           </div>
           <div className="divide-y divide-[hsl(var(--border))]">
             {activityLoading ? (
@@ -181,7 +184,7 @@ export function DashboardView() {
         {/* Spending by Category */}
         <div className="lg:col-span-2 bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl shadow-sm">
           <div className="px-6 py-4 border-b border-[hsl(var(--border))]">
-            <h2 className="font-semibold text-[hsl(var(--foreground))]">Spending by Category</h2>
+            <h2 className="font-semibold text-[hsl(var(--foreground))]">{t("spendingByCategory")}</h2>
           </div>
           <div className="px-6 py-4 space-y-4">
             {summaryLoading ? (

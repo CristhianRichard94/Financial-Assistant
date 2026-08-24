@@ -68,7 +68,7 @@ describe("DELETE /api/documents/[id]", () => {
     const body = await res.json();
 
     expect(res.status).toBe(404);
-    expect(body).toEqual({ error: "Document not found" });
+    expect(body).toEqual({ error: "document_not_found" });
   });
 
   it("maps a non-404 RagApiError to a 500 response", async () => {
@@ -79,7 +79,7 @@ describe("DELETE /api/documents/[id]", () => {
     const body = await res.json();
 
     expect(res.status).toBe(500);
-    expect(body).toEqual({ error: "Failed to delete document" });
+    expect(body).toEqual({ error: "delete_document_failed" });
   });
 
   it("maps a non-RagApiError failure to a 500 response", async () => {

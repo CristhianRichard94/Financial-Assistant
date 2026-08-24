@@ -16,8 +16,32 @@ import {
   Loader2,
   CloudUpload,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { cn, formatDate, formatFileSize } from "@/lib/utils";
 import type { Document } from "@/lib/store";
+
+/** Maps a server-returned machine-readable error code (see the API route
+ * handlers under `src/app/api/documents/`) to a translated user-facing
+ * message, falling back to `errors.generic` for unknown codes (including
+ * network failures, which never produce a code at all). */
+function useErrorMessage() {
+  const t = useTranslations("errors");
+  return (code: string | undefined) => {
+    if (code && t.has(code)) {
+      return t(code);
+    }
+    return t("generic");
+  };
+}
+
+async function extractErrorCode(res: Response): Promise<string | undefined> {
+  try {
+    const body = await res.json();
+    return typeof body?.error === "string" ? body.error : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 function useDocuments() {
   return useQuery<Document[]>({
@@ -45,22 +69,25 @@ function DocTypeIcon({ type }: { type: Document["type"] }) {
 }
 
 function StatusBadge({ status }: { status: Document["status"] }) {
+  const t = useTranslations("documents.statuses");
   const map = {
-    pending: { label: "Pending", color: "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400", icon: <Clock className="w-3 h-3" /> },
-    processing: { label: "Processing", color: "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400", icon: <Loader2 className="w-3 h-3 animate-spin" /> },
-    processed: { label: "Processed", color: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400", icon: <CheckCircle2 className="w-3 h-3" /> },
-    error: { label: "Error", color: "bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-400", icon: <AlertCircle className="w-3 h-3" /> },
+    pending: { color: "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400", icon: <Clock className="w-3 h-3" /> },
+    processing: { color: "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400", icon: <Loader2 className="w-3 h-3 animate-spin" /> },
+    processed: { color: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400", icon: <CheckCircle2 className="w-3 h-3" /> },
+    error: { color: "bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-400", icon: <AlertCircle className="w-3 h-3" /> },
   } as const;
-  const { label, color, icon } = map[status];
+  const { color, icon } = map[status];
   return (
     <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium", color)}>
       {icon}
-      {label}
+      {t(status)}
     </span>
   );
 }
 
 export function DocumentsView() {
+  const t = useTranslations("documents");
+  const getErrorMessage = useErrorMessage();
   const queryClient = useQueryClient();
   const { data: documents, isLoading, isError } = useDocuments();
   const [uploading, setUploading] = useState(false);
@@ -69,13 +96,16 @@ export function DocumentsView() {
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await fetch(`/api/documents/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete");
+      if (!res.ok) {
+        const code = await extractErrorCode(res);
+        throw new Error(code);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["documents"] });
-      toast.success("Document deleted");
+      toast.success(t("documentDeleted"));
     },
-    onError: () => toast.error("Failed to delete document"),
+    onError: (error: Error) => toast.error(getErrorMessage(error.message)),
   });
 
   const onDrop = useCallback(
@@ -83,7 +113,7 @@ export function DocumentsView() {
       const file = acceptedFiles[0];
       if (!file) return;
       if (file.size > 10 * 1024 * 1024) {
-        toast.error("File exceeds 10MB limit");
+        toast.error(getErrorMessage("upload_too_large"));
         return;
       }
       setUploading(true);
@@ -95,14 +125,17 @@ export function DocumentsView() {
         const form = new FormData();
         form.append("file", file);
         const res = await fetch("/api/documents", { method: "POST", body: form });
-        if (!res.ok) throw new Error("Upload failed");
+        if (!res.ok) {
+          const code = await extractErrorCode(res);
+          throw new Error(code);
+        }
         clearInterval(interval);
         setUploadProgress(100);
         await queryClient.invalidateQueries({ queryKey: ["documents"] });
-        toast.success(`${file.name} uploaded successfully`);
-      } catch {
+        toast.success(t("uploadedSuccessfully", { fileName: file.name }));
+      } catch (error) {
         clearInterval(interval);
-        toast.error("Upload failed. Please try again.");
+        toast.error(getErrorMessage(error instanceof Error ? error.message : undefined));
       } finally {
         setTimeout(() => {
           setUploading(false);
@@ -110,7 +143,7 @@ export function DocumentsView() {
         }, 600);
       }
     },
-    [queryClient]
+    [queryClient, getErrorMessage, t]
   );
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
@@ -129,9 +162,9 @@ export function DocumentsView() {
   return (
     <div className="p-6 lg:p-8 max-w-5xl mx-auto space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-[hsl(var(--foreground))]">Documents</h1>
+        <h1 className="text-2xl font-bold text-[hsl(var(--foreground))]">{t("title")}</h1>
         <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
-          Upload statements, receipts, and CSV exports for FinSight to analyze
+          {t("subtitle")}
         </p>
       </div>
 
@@ -159,7 +192,7 @@ export function DocumentsView() {
           </div>
           {uploading ? (
             <div className="space-y-2 w-full max-w-xs">
-              <p className="text-sm font-medium">Uploading…</p>
+              <p className="text-sm font-medium">{t("uploading")}</p>
               <div className="h-2 bg-[hsl(var(--muted))] rounded-full overflow-hidden">
                 <div
                   className="h-full bg-[hsl(var(--primary))] rounded-full transition-all duration-300"
@@ -168,15 +201,15 @@ export function DocumentsView() {
               </div>
             </div>
           ) : isDragActive ? (
-            <p className="text-sm font-medium text-[hsl(var(--primary))]">Drop to upload</p>
+            <p className="text-sm font-medium text-[hsl(var(--primary))]">{t("dropToUpload")}</p>
           ) : (
             <>
               <div>
                 <p className="text-sm font-medium text-[hsl(var(--foreground))]">
-                  Drag & drop your file here
+                  {t("dragDrop")}
                 </p>
                 <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
-                  PDF, CSV, JPG, PNG — up to 10MB
+                  {t("fileTypes")}
                 </p>
               </div>
               <button
@@ -185,7 +218,7 @@ export function DocumentsView() {
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-[hsl(var(--primary))] text-white rounded-lg hover:opacity-90 transition-opacity"
               >
                 <Upload className="w-4 h-4" />
-                Browse Files
+                {t("browseFiles")}
               </button>
             </>
           )}
@@ -195,7 +228,7 @@ export function DocumentsView() {
       {/* Documents table */}
       <div className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-[hsl(var(--border))]">
-          <h2 className="font-semibold text-[hsl(var(--foreground))]">Uploaded Documents</h2>
+          <h2 className="font-semibold text-[hsl(var(--foreground))]">{t("uploadedDocuments")}</h2>
         </div>
         {isLoading ? (
           <div className="divide-y divide-[hsl(var(--border))]">
@@ -214,22 +247,22 @@ export function DocumentsView() {
         ) : isError ? (
           <div className="px-6 py-16 text-center">
             <AlertCircle className="w-10 h-10 text-[hsl(var(--muted-foreground))]/40 mx-auto mb-3" />
-            <p className="text-sm text-[hsl(var(--muted-foreground))]">Couldn&apos;t load your documents. Please try again.</p>
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">{t("loadError")}</p>
           </div>
         ) : !documents?.length ? (
           <div className="px-6 py-16 text-center">
             <FileText className="w-10 h-10 text-[hsl(var(--muted-foreground))]/40 mx-auto mb-3" />
-            <p className="text-sm text-[hsl(var(--muted-foreground))]">No documents yet. Upload one above to get started.</p>
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">{t("noDocuments")}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30">
-                  <th className="text-left px-6 py-3 font-medium text-[hsl(var(--muted-foreground))]">Name</th>
-                  <th className="text-left px-6 py-3 font-medium text-[hsl(var(--muted-foreground))] hidden sm:table-cell">Date Added</th>
-                  <th className="text-left px-6 py-3 font-medium text-[hsl(var(--muted-foreground))] hidden md:table-cell">Size</th>
-                  <th className="text-left px-6 py-3 font-medium text-[hsl(var(--muted-foreground))]">Status</th>
+                  <th className="text-left px-6 py-3 font-medium text-[hsl(var(--muted-foreground))]">{t("name")}</th>
+                  <th className="text-left px-6 py-3 font-medium text-[hsl(var(--muted-foreground))] hidden sm:table-cell">{t("dateAdded")}</th>
+                  <th className="text-left px-6 py-3 font-medium text-[hsl(var(--muted-foreground))] hidden md:table-cell">{t("size")}</th>
+                  <th className="text-left px-6 py-3 font-medium text-[hsl(var(--muted-foreground))]">{t("status")}</th>
                   <th className="px-6 py-3" />
                 </tr>
               </thead>
@@ -258,7 +291,7 @@ export function DocumentsView() {
                         onClick={() => deleteMutation.mutate(doc.id)}
                         disabled={deleteMutation.isPending}
                         className="p-1.5 rounded-lg hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/15 dark:hover:text-red-400 text-[hsl(var(--muted-foreground))] transition-colors disabled:opacity-50"
-                        aria-label="Delete document"
+                        aria-label={t("deleteDocument")}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>

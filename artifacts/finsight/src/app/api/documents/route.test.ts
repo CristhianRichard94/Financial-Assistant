@@ -114,7 +114,7 @@ describe("GET /api/documents", () => {
     const body = await res.json();
 
     expect(res.status).toBe(503);
-    expect(body).toEqual({ error: "Failed to list documents" });
+    expect(body).toEqual({ error: "documents_list_failed" });
   });
 
   it("falls back to a 500 status for a non-RagApiError failure", async () => {
@@ -157,7 +157,7 @@ describe("POST /api/documents", () => {
     const body = await res.json();
 
     expect(res.status).toBe(400);
-    expect(body).toEqual({ error: "No file provided" });
+    expect(body).toEqual({ error: "no_file_provided" });
   });
 
   it("returns 400 when the declared content-length exceeds the limit (layer 1 rejection)", async () => {
@@ -170,7 +170,7 @@ describe("POST /api/documents", () => {
     const body = await res.json();
 
     expect(res.status).toBe(400);
-    expect(body).toEqual({ error: "File exceeds 10MB limit" });
+    expect(body).toEqual({ error: "upload_too_large" });
     expect(uploadDocument).not.toHaveBeenCalled();
   });
 
@@ -186,7 +186,7 @@ describe("POST /api/documents", () => {
     const body = await res.json();
 
     expect(res.status).toBe(400);
-    expect(body).toEqual({ error: "File exceeds 10MB limit" });
+    expect(body).toEqual({ error: "upload_too_large" });
     expect(uploadDocument).not.toHaveBeenCalled();
   });
 
@@ -206,7 +206,7 @@ describe("POST /api/documents", () => {
     const body = await res.json();
 
     expect(res.status).toBe(400);
-    expect(body).toEqual({ error: "File exceeds 10MB limit" });
+    expect(body).toEqual({ error: "upload_too_large" });
   });
 
   it("uploads successfully via the mocked rag-api client", async () => {
@@ -239,6 +239,6 @@ describe("POST /api/documents", () => {
     const body = await res.json();
 
     expect(res.status).toBe(502);
-    expect(body).toEqual({ error: "Upload failed" });
+    expect(body).toEqual({ error: "upload_failed" });
   });
 });

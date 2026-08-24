@@ -1,0 +1,127 @@
+{
+  "common": {
+    "appName": "FinSight",
+    "tagline": "Asistente financiero con IA"
+  },
+  "nav": {
+    "dashboard": "Panel",
+    "documents": "Documentos",
+    "chat": "Chat",
+    "logout": "Cerrar sesión",
+    "signedOut": "Sesión cerrada"
+  },
+  "theme": {
+    "lightMode": "Modo claro",
+    "darkMode": "Modo oscuro",
+    "switchToLight": "Cambiar a tema claro",
+    "switchToDark": "Cambiar a tema oscuro"
+  },
+  "language": {
+    "spanish": "Español",
+    "english": "Inglés",
+    "switchToSpanish": "Cambiar a español",
+    "switchToEnglish": "Cambiar a inglés"
+  },
+  "auth": {
+    "login": {
+      "title": "Iniciar sesión en FinSight",
+      "signInWithGoogle": "Iniciar sesión con Google",
+      "redirecting": "Redirigiendo…",
+      "errors": {
+        "cancelled": {
+          "title": "Se canceló el inicio de sesión",
+          "description": "Puedes intentarlo de nuevo cuando quieras."
+        },
+        "failed": {
+          "title": "Algo salió mal",
+          "description": "No pudimos iniciar tu sesión. Inténtalo de nuevo."
+        }
+      }
+    }
+  },
+  "dashboard": {
+    "title": "Resumen",
+    "subtitle": "Tu panorama financiero de este mes",
+    "totalIncome": "Ingresos totales",
+    "totalSpending": "Gastos totales",
+    "netSavings": "Ahorro neto",
+    "vsLastMonth": "vs. mes anterior",
+    "analyzedFrom": "Analizado a partir de {count, plural, one {# documento} other {# documentos}}",
+    "recentActivity": "Actividad reciente",
+    "spendingByCategory": "Gastos por categoría"
+  },
+  "documents": {
+    "title": "Documentos",
+    "subtitle": "Sube estados de cuenta, recibos y exportaciones CSV para que FinSight los analice",
+    "dragDrop": "Arrastra y suelta tu archivo aquí",
+    "fileTypes": "PDF, CSV, JPG, PNG — hasta 10MB",
+    "browseFiles": "Explorar archivos",
+    "dropToUpload": "Suelta para subir",
+    "uploading": "Subiendo…",
+    "uploadedDocuments": "Documentos subidos",
+    "name": "Nombre",
+    "dateAdded": "Fecha de subida",
+    "size": "Tamaño",
+    "status": "Estado",
+    "deleteDocument": "Eliminar documento",
+    "noDocuments": "Aún no hay documentos. Sube uno arriba para comenzar.",
+    "loadError": "No se pudieron cargar tus documentos. Inténtalo de nuevo.",
+    "documentDeleted": "Documento eliminado",
+    "uploadedSuccessfully": "{fileName} se subió correctamente",
+    "statuses": {
+      "pending": "Pendiente",
+      "processing": "Procesando",
+      "processed": "Procesado",
+      "error": "Error"
+    }
+  },
+  "chat": {
+    "aiName": "FinSight AI",
+    "readyToAnalyze": "Listo para analizar tus finanzas",
+    "uploadToUnlock": "Sube documentos para desbloquear el análisis completo",
+    "welcomeTitle": "Bienvenido a FinSight",
+    "welcomeDescription": "Pregúntame lo que quieras sobre tus finanzas. Puedo analizar ingresos, patrones de gasto y más.",
+    "placeholderWithDocs": "Pregúntame sobre tus finanzas…",
+    "placeholderNoDocs": "Pregúntame lo que quieras…",
+    "sendHint": "Enter para enviar · Shift+Enter para nueva línea",
+    "sending": "Enviando…",
+    "notSent": "No enviado",
+    "notSentAriaLabel": "Mensaje no enviado. Presiona Enter para editar y reenviar.",
+    "loadError": "No se pudieron cargar los mensajes. Inténtalo de nuevo.",
+    "noDocumentsCallout": "Aún no hay documentos procesados.",
+    "uploadADocument": "Sube un documento",
+    "toEnableFullAnalysis": "para habilitar el análisis financiero completo.",
+    "sendFailed": "No se pudo enviar tu mensaje. Inténtalo de nuevo.",
+    "historyNotLoaded": "Aún no se pudo cargar el historial de mensajes. Espera a que termine de cargar antes de enviar."
+  },
+  "errors": {
+    "generic": "Ocurrió un error inesperado. Inténtalo de nuevo.",
+    "documents_list_failed": "No se pudieron cargar los documentos.",
+    "upload_too_large": "El archivo supera el límite de 10MB.",
+    "upload_invalid": "Carga inválida.",
+    "no_file_provided": "No se proporcionó ningún archivo.",
+    "upload_failed": "Error al subir el archivo. Inténtalo de nuevo.",
+    "document_not_found": "Documento no encontrado.",
+    "delete_document_failed": "No se pudo eliminar el documento",
+    "messages_load_failed": "No se pudieron cargar los mensajes.",
+    "message_invalid": "Mensaje inválido.",
+    "message_send_failed": "No se pudo enviar el mensaje."
+  },
+  "notFound": {
+    "title": "404 Página no encontrada",
+    "description": "¿Olvidaste agregar la página al enrutador?"
+  },
+  "ui": {
+    "close": "Cerrar",
+    "previousPage": "Ir a la página anterior",
+    "nextPage": "Ir a la página siguiente",
+    "previous": "Anterior",
+    "next": "Siguiente",
+    "morePages": "Más páginas",
+    "more": "Más",
+    "toggleSidebar": "Alternar barra lateral",
+    "sidebarTitle": "Barra lateral",
+    "sidebarDescription": "Muestra la barra lateral en móvil.",
+    "breadcrumbLabel": "ruta de navegación"
+  }
+}

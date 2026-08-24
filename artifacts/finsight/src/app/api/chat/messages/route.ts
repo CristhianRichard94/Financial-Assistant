@@ -35,7 +35,7 @@ export async function GET() {
 
   if (error) {
     console.error("Failed to load chat messages:", error);
-    return NextResponse.json({ error: "Failed to load messages" }, { status: 500 });
+    return NextResponse.json({ error: "messages_load_failed" }, { status: 500 });
   }
 
   return NextResponse.json((data ?? []).map(toChatMessage));
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const parsed = sendMessageSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid message" }, { status: 400 });
+    return NextResponse.json({ error: "message_invalid" }, { status: 400 });
   }
 
   const supabase = await createClient();
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
 
   if (userInsertError || !userRow) {
     console.error("Failed to store user chat message:", userInsertError);
-    return NextResponse.json({ error: "Failed to send message" }, { status: 500 });
+    return NextResponse.json({ error: "message_send_failed" }, { status: 500 });
   }
 
   let replyContent = FALLBACK_REPLY;
@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
 
   if (assistantInsertError || !assistantRow) {
     console.error("Failed to store assistant chat message:", assistantInsertError);
-    return NextResponse.json({ error: "Failed to send message" }, { status: 500 });
+    return NextResponse.json({ error: "message_send_failed" }, { status: 500 });
   }
 
   return NextResponse.json(
