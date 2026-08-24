@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rag-eval"
+version = "0.1.0"
+description = "DeepEval-based RAG quality evaluation suite for FinSight, exercising the real rag-pipeline retrieval and rag-api generation code paths against a golden dataset."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "deepeval>=1.0.0",
+    "pyyaml>=6.0",
+    # Local path dependencies on the sibling rag-pipeline and rag-api
+    # packages. `{root:uri}` is a Hatchling build-time context variable that
+    # expands to this package's own directory as a file:// URI, so this
+    # resolves relative to wherever the repo is checked out - no hardcoded
+    # absolute path needed. Requires
+    # `[tool.hatch.metadata] allow-direct-references = true` below. This
+    # dependency is one-directional: rag-pipeline and rag-api know nothing
+    # about rag-eval.
+    "rag-pipeline @ {root:uri}/../rag-pipeline",
+    "rag-api @ {root:uri}/../rag-api",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["rag_eval"]

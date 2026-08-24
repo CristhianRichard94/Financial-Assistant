@@ -1,0 +1,125 @@
+# Golden evaluation cases for the FinSight RAG pipeline.
+#
+# Domain: services/rag-pipeline/sample_data/sample_budget_guide.pdf (a
+# personal-finance guide covering the 50/30/20 rule, emergency funds, debt
+# paydown, retirement savings, and spending tracking) and
+# sample_transactions.csv (a June 2026 transaction ledger). Both must be
+# ingested for EVAL_USER_ID before running this suite - see README.md in
+# this directory.
+#
+# Fields:
+#   id                        - unique, stable identifier for the case.
+#   input                     - the question asked.
+#   expected_output           - a reference answer DeepEval compares against.
+#   expected_retrieval_context - snippets a good retrieval should surface;
+#                               falls back to expected_output if omitted.
+#   document_type             - optional filter passed to search() ("pdf" or
+#                               "csv"); omit to search across all documents.
+#   date_from / date_to       - optional ISO 8601 date filters.
+#   tags                      - used to select subsets of cases in tests
+#                               (e.g. "budget_guide", "transactions",
+#                               "refusal").
+
+cases:
+  - id: budget_50_30_20_rule
+    input: "How should I split my income between needs, wants, and savings?"
+    expected_output: >
+      A common approach is the 50/30/20 rule: 50% of after-tax income goes to
+      needs like rent, utilities, and groceries; 30% goes to wants like
+      dining out and entertainment; and the remaining 20% goes to savings and
+      extra debt paydown.
+    expected_retrieval_context:
+      - >
+        Fifty percent of after-tax income goes to needs such as rent,
+        utilities, groceries, and minimum debt payments. Thirty percent goes
+        to wants, including dining out, entertainment subscriptions, and
+        hobbies. The remaining twenty percent goes to savings and extra debt
+        paydown.
+    document_type: pdf
+    tags: [budget_guide, retrieval, generation]
+
+  - id: emergency_fund_size
+    input: "How many months of expenses should my emergency fund cover?"
+    expected_output: >
+      Most financial planners recommend saving three to six months of
+      essential expenses in an easily accessible account, such as a
+      high-yield savings account.
+    expected_retrieval_context:
+      - >
+        most financial planners recommend saving three to six months of
+        essential expenses in an easily accessible account
+    document_type: pdf
+    tags: [budget_guide, retrieval, generation]
+
+  - id: debt_payoff_strategies
+    input: "What are the avalanche and snowball methods for paying off debt?"
+    expected_output: >
+      The avalanche method pays extra toward the debt with the highest
+      interest rate first, minimizing total interest paid. The snowball
+      method pays off the smallest balance first, which builds momentum and
+      motivation even though it isn't always the mathematically optimal
+      choice.
+    expected_retrieval_context:
+      - >
+        The avalanche method pays extra toward the debt with the highest
+        interest rate first, minimizing total interest paid over time. The
+        snowball method pays off the smallest balance first, which builds
+        momentum and motivation
+    document_type: pdf
+    tags: [budget_guide, retrieval, generation]
+
+  - id: retirement_401k_match
+    input: "Why should I contribute enough to get my full employer 401k match?"
+    expected_output: >
+      Many employers match a percentage of 401(k) contributions, which is
+      effectively free money and should usually be captured in full before
+      directing extra savings elsewhere.
+    expected_retrieval_context:
+      - >
+        Many employers match a percentage of 401(k) contributions, which is
+        effectively free money and should usually be captured in full before
+        directing extra savings elsewhere.
+    document_type: pdf
+    tags: [budget_guide, retrieval, generation]
+
+  - id: rent_payment_amount
+    input: "How much was the rent payment in June 2026?"
+    expected_output: "The rent payment on 2026-06-03 was $1,850.00, paid from the Checking account."
+    expected_retrieval_context:
+      - "2026-06-03,Rent payment,Housing,-1850.00,Checking"
+    document_type: csv
+    date_from: "2026-06-01"
+    date_to: "2026-06-30"
+    tags: [transactions, retrieval, generation]
+
+  - id: groceries_total_spend
+    input: "What did I spend at grocery stores in June 2026?"
+    expected_output: >
+      Two grocery purchases in June 2026: $86.42 at Whole Foods Market on
+      2026-06-02, and $64.20 at Trader Joe's on 2026-06-18.
+    expected_retrieval_context:
+      - "2026-06-02,Whole Foods Market,Groceries,-86.42,Checking"
+      - "2026-06-18,Trader Joe's,Groceries,-64.20,Checking"
+    document_type: csv
+    tags: [transactions, retrieval, generation]
+
+  - id: savings_transfer_amount
+    input: "How much did I transfer to savings in June 2026?"
+    expected_output: "A $500.00 transfer to savings was made on 2026-06-12."
+    expected_retrieval_context:
+      - "2026-06-12,Transfer to savings account,Transfer,-500.00,Checking"
+      - "2026-06-12,Transfer to savings account,Transfer,500.00,Savings"
+    document_type: csv
+    tags: [transactions, retrieval, generation]
+
+  - id: out_of_scope_refusal
+    input: "What is the current interest rate the Federal Reserve has set for overnight loans?"
+    expected_output: >
+      The retrieved documents don't contain enough information to answer
+      this question; the assistant should say so explicitly rather than
+      guessing, per the system prompt's rules.
+    expected_retrieval_context:
+      - >
+        The budgeting guide and personal transaction ledger do not mention
+        Federal Reserve interest rates.
+    tags: [refusal, generation]
