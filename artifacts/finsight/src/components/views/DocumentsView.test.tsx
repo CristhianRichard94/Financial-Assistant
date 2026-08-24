@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { renderWithIntl as render, screen, waitFor } from "@/test/renderWithIntl";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { DocumentsView } from "@/components/views/DocumentsView";
@@ -49,7 +49,11 @@ function installFetchMock(options: {
 
     if (init?.method === "DELETE") {
       const ok = options.deleteOk ?? true;
-      return { ok, status: ok ? 200 : 500, json: async () => ({}) } as Response;
+      return {
+        ok,
+        status: ok ? 200 : 500,
+        json: async () => (ok ? {} : { error: "delete_document_failed" }),
+      } as Response;
     }
     if (url.includes("/api/documents")) {
       const { ok, body } = options.documents;

@@ -1,10 +1,13 @@
 import { TrendingUp } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 /** Shared brand header for the login page and the session-resolving loading
  * screen (`src/app/loading.tsx`) - kept in one place so both stay visually
  * identical, which is required so neither ever reads as a "flash" of the
  * other. */
 export function BrandLockup() {
+  const tCommon = useTranslations("common");
+
   return (
     <div className="flex flex-col items-center gap-3 text-center">
       <div className="flex items-center gap-3">
@@ -12,10 +15,10 @@ export function BrandLockup() {
           <TrendingUp className="w-6 h-6 text-white" />
         </div>
         <span className="font-semibold text-2xl tracking-tight text-[hsl(var(--foreground))]">
-          FinSight
+          {tCommon("appName")}
         </span>
       </div>
-      <p className="text-sm text-[hsl(var(--muted-foreground))]">AI-powered finance assistant</p>
+      <p className="text-sm text-[hsl(var(--muted-foreground))]">{tCommon("tagline")}</p>
     </div>
   );
 }

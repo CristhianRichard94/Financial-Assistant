@@ -11,12 +11,14 @@ import {
   X,
   Sun,
   Moon,
+  Languages,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
+import { useLocale, useTranslations } from "next-intl";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -25,12 +27,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { createClient } from "@/lib/supabase/browser";
-
-const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/documents", label: "Documents", icon: FileText },
-  { href: "/chat", label: "Chat", icon: MessageSquare },
-];
 
 export interface SidebarUser {
   email: string;
@@ -47,13 +43,14 @@ function getInitials(label: string): string {
 
 function IdentityMenu({ user }: { user: SidebarUser }) {
   const router = useRouter();
+  const t = useTranslations("nav");
   const identityLabel = user.displayName || user.email;
   const initials = getInitials(identityLabel);
 
   async function handleLogout() {
     const supabase = createClient();
     await supabase.auth.signOut();
-    toast("Signed out");
+    toast(t("signedOut"));
     router.push("/login");
   }
 
@@ -77,7 +74,7 @@ function IdentityMenu({ user }: { user: SidebarUser }) {
       <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-56">
         <DropdownMenuItem onClick={handleLogout}>
           <LogOut className="mr-2" />
-          Log out
+          {t("logout")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -86,6 +83,7 @@ function IdentityMenu({ user }: { user: SidebarUser }) {
 
 function ThemeToggle({ variant }: { variant: "desktop" | "mobile" }) {
   const { resolvedTheme, setTheme } = useTheme();
+  const t = useTranslations("theme");
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -101,7 +99,7 @@ function ThemeToggle({ variant }: { variant: "desktop" | "mobile" }) {
         >
           <span className="invisible flex items-center gap-3">
             <Moon className="w-4 h-4 shrink-0" />
-            Dark mode
+            {t("darkMode")}
           </span>
         </div>
       );
@@ -119,7 +117,7 @@ function ThemeToggle({ variant }: { variant: "desktop" | "mobile" }) {
         ) : (
           <Sun className="w-4 h-4 shrink-0" />
         )}
-        {isDark ? "Dark mode" : "Light mode"}
+        {isDark ? t("darkMode") : t("lightMode")}
       </button>
     );
   }
@@ -138,7 +136,7 @@ function ThemeToggle({ variant }: { variant: "desktop" | "mobile" }) {
     <button
       type="button"
       onClick={() => setTheme(isDark ? "light" : "dark")}
-      aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
+      aria-label={isDark ? t("switchToLight") : t("switchToDark")}
       className="ml-auto p-2 rounded-lg hover:bg-[hsl(var(--muted))] transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--background))]"
     >
       {isDark ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
@@ -146,15 +144,66 @@ function ThemeToggle({ variant }: { variant: "desktop" | "mobile" }) {
   );
 }
 
+function setLocaleCookie(locale: string) {
+  document.cookie = `NEXT_LOCALE=${locale}; path=/; max-age=31536000; SameSite=Lax`;
+}
+
+function LanguageToggle({ variant }: { variant: "desktop" | "mobile" }) {
+  const locale = useLocale();
+  const router = useRouter();
+  const t = useTranslations("language");
+  const isSpanish = locale === "es";
+  const nextLocale = isSpanish ? "en" : "es";
+
+  function handleToggle() {
+    setLocaleCookie(nextLocale);
+    router.refresh();
+  }
+
+  if (variant === "desktop") {
+    return (
+      <button
+        type="button"
+        onClick={handleToggle}
+        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[hsl(var(--sidebar-foreground))] hover:bg-white/10 hover:text-white transition-all motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--sidebar-primary))] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--sidebar))] mb-3"
+      >
+        <Languages className="w-4 h-4 shrink-0" />
+        {isSpanish ? t("english") : t("spanish")}
+      </button>
+    );
+  }
+
+  // mobile
+  return (
+    <button
+      type="button"
+      onClick={handleToggle}
+      aria-label={isSpanish ? t("switchToEnglish") : t("switchToSpanish")}
+      className="ml-auto p-2 rounded-lg hover:bg-[hsl(var(--muted))] transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--background))]"
+    >
+      <Languages className="w-5 h-5" />
+    </button>
+  );
+}
+
 function Sidebar({ onClose, user }: { onClose?: () => void; user: SidebarUser }) {
   const pathname = usePathname();
+  const t = useTranslations("nav");
+  const tCommon = useTranslations("common");
+
+  const navItems = [
+    { href: "/dashboard", label: t("dashboard"), icon: LayoutDashboard },
+    { href: "/documents", label: t("documents"), icon: FileText },
+    { href: "/chat", label: t("chat"), icon: MessageSquare },
+  ];
+
   return (
     <aside className="flex flex-col h-full w-64 bg-[hsl(var(--sidebar))] text-[hsl(var(--sidebar-foreground))]">
       <div className="flex items-center gap-3 px-6 py-5 border-b border-[hsl(var(--sidebar-border))]">
         <div className="w-8 h-8 rounded-lg bg-[hsl(var(--primary))] flex items-center justify-center">
           <TrendingUp className="w-4 h-4 text-white" />
         </div>
-        <span className="font-semibold text-lg tracking-tight text-white">FinSight</span>
+        <span className="font-semibold text-lg tracking-tight text-white">{tCommon("appName")}</span>
         {onClose && (
           <button
             onClick={onClose}
@@ -190,8 +239,9 @@ function Sidebar({ onClose, user }: { onClose?: () => void; user: SidebarUser })
       <div className="px-4 py-4 border-t border-[hsl(var(--sidebar-border))]">
         <IdentityMenu user={user} />
         <ThemeToggle variant="desktop" />
+        <LanguageToggle variant="desktop" />
         <p className="text-xs text-[hsl(var(--sidebar-foreground))] opacity-60">
-          AI-powered finance assistant
+          {tCommon("tagline")}
         </p>
       </div>
     </aside>
@@ -206,6 +256,7 @@ export function AppLayout({
   user: SidebarUser;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const tCommon = useTranslations("common");
 
   return (
     <div className="flex h-screen overflow-hidden bg-[hsl(var(--background))] transition-colors duration-200">
@@ -241,9 +292,10 @@ export function AppLayout({
             <div className="w-6 h-6 rounded bg-[hsl(var(--primary))] flex items-center justify-center">
               <TrendingUp className="w-3 h-3 text-white" />
             </div>
-            <span className="font-semibold text-sm">FinSight</span>
+            <span className="font-semibold text-sm">{tCommon("appName")}</span>
           </div>
           <ThemeToggle variant="mobile" />
+          <LanguageToggle variant="mobile" />
         </header>
 
         <main className="flex-1 overflow-auto">{children}</main>

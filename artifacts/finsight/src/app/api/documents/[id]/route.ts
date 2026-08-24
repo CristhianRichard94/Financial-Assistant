@@ -15,9 +15,9 @@ export async function DELETE(
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     if (error instanceof RagApiError && error.status === 404) {
-      return NextResponse.json({ error: "Document not found" }, { status: 404 });
+      return NextResponse.json({ error: "document_not_found" }, { status: 404 });
     }
     console.error("Failed to delete document via rag-api:", error);
-    return NextResponse.json({ error: "Failed to delete document" }, { status: 500 });
+    return NextResponse.json({ error: "delete_document_failed" }, { status: 500 });
   }
 }

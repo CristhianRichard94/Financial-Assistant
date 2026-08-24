@@ -1,0 +1,127 @@
+{
+  "common": {
+    "appName": "FinSight",
+    "tagline": "AI-powered finance assistant"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "documents": "Documents",
+    "chat": "Chat",
+    "logout": "Log out",
+    "signedOut": "Signed out"
+  },
+  "theme": {
+    "lightMode": "Light mode",
+    "darkMode": "Dark mode",
+    "switchToLight": "Switch to light theme",
+    "switchToDark": "Switch to dark theme"
+  },
+  "language": {
+    "spanish": "Spanish",
+    "english": "English",
+    "switchToSpanish": "Switch to Spanish",
+    "switchToEnglish": "Switch to English"
+  },
+  "auth": {
+    "login": {
+      "title": "Sign in to FinSight",
+      "signInWithGoogle": "Sign in with Google",
+      "redirecting": "Redirecting…",
+      "errors": {
+        "cancelled": {
+          "title": "Sign-in was cancelled",
+          "description": "You can try again whenever you're ready."
+        },
+        "failed": {
+          "title": "Something went wrong",
+          "description": "We couldn't sign you in. Please try again."
+        }
+      }
+    }
+  },
+  "dashboard": {
+    "title": "Overview",
+    "subtitle": "Your financial snapshot for this month",
+    "totalIncome": "Total Income",
+    "totalSpending": "Total Spending",
+    "netSavings": "Net Savings",
+    "vsLastMonth": "vs last month",
+    "analyzedFrom": "Analyzed from {count, plural, one {# document} other {# documents}}",
+    "recentActivity": "Recent Activity",
+    "spendingByCategory": "Spending by Category"
+  },
+  "documents": {
+    "title": "Documents",
+    "subtitle": "Upload statements, receipts, and CSV exports for FinSight to analyze",
+    "dragDrop": "Drag & drop your file here",
+    "fileTypes": "PDF, CSV, JPG, PNG — up to 10MB",
+    "browseFiles": "Browse Files",
+    "dropToUpload": "Drop to upload",
+    "uploading": "Uploading…",
+    "uploadedDocuments": "Uploaded Documents",
+    "name": "Name",
+    "dateAdded": "Date Added",
+    "size": "Size",
+    "status": "Status",
+    "deleteDocument": "Delete document",
+    "noDocuments": "No documents yet. Upload one above to get started.",
+    "loadError": "Couldn't load your documents. Please try again.",
+    "documentDeleted": "Document deleted",
+    "uploadedSuccessfully": "{fileName} uploaded successfully",
+    "statuses": {
+      "pending": "Pending",
+      "processing": "Processing",
+      "processed": "Processed",
+      "error": "Error"
+    }
+  },
+  "chat": {
+    "aiName": "FinSight AI",
+    "readyToAnalyze": "Ready to analyze your finances",
+    "uploadToUnlock": "Upload documents to unlock full analysis",
+    "welcomeTitle": "Welcome to FinSight",
+    "welcomeDescription": "Ask me anything about your finances. I can analyze income, spending patterns, and more.",
+    "placeholderWithDocs": "Ask me about your finances…",
+    "placeholderNoDocs": "Ask me anything…",
+    "sendHint": "Enter to send · Shift+Enter for new line",
+    "sending": "Sending…",
+    "notSent": "Not sent",
+    "notSentAriaLabel": "Message not sent. Press Enter to edit and resend.",
+    "loadError": "Couldn't load messages. Please try again.",
+    "noDocumentsCallout": "No processed documents yet.",
+    "uploadADocument": "Upload a document",
+    "toEnableFullAnalysis": "to enable full financial analysis.",
+    "sendFailed": "Your message couldn't be sent. Please try again.",
+    "historyNotLoaded": "Couldn't load message history yet. Please wait for it to finish loading before sending."
+  },
+  "errors": {
+    "generic": "Something unexpected happened. Please try again.",
+    "documents_list_failed": "Failed to load documents.",
+    "upload_too_large": "File exceeds 10MB limit.",
+    "upload_invalid": "Invalid upload.",
+    "no_file_provided": "No file provided.",
+    "upload_failed": "Upload failed. Please try again.",
+    "document_not_found": "Document not found.",
+    "delete_document_failed": "Failed to delete document",
+    "messages_load_failed": "Failed to load messages.",
+    "message_invalid": "Invalid message.",
+    "message_send_failed": "Failed to send message."
+  },
+  "notFound": {
+    "title": "404 Page Not Found",
+    "description": "Did you forget to add the page to the router?"
+  },
+  "ui": {
+    "close": "Close",
+    "previousPage": "Go to previous page",
+    "nextPage": "Go to next page",
+    "previous": "Previous",
+    "next": "Next",
+    "morePages": "More pages",
+    "more": "More",
+    "toggleSidebar": "Toggle Sidebar",
+    "sidebarTitle": "Sidebar",
+    "sidebarDescription": "Displays the mobile sidebar.",
+    "breadcrumbLabel": "breadcrumb"
+  }
+}

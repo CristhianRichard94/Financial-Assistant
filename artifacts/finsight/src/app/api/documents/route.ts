@@ -17,7 +17,7 @@ export async function GET() {
   } catch (error) {
     console.error("Failed to list documents via rag-api:", error);
     const status = error instanceof RagApiError ? error.status : 500;
-    return NextResponse.json({ error: "Failed to list documents" }, { status });
+    return NextResponse.json({ error: "documents_list_failed" }, { status });
   }
 }
 
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
   // a Route Handler, so without this an oversized request would otherwise
   // be fully buffered into memory before any check could run.
   if (contentLengthExceedsLimit(req, MAX_REQUEST_BODY_BYTES)) {
-    return NextResponse.json({ error: "File exceeds 10MB limit" }, { status: 400 });
+    return NextResponse.json({ error: "upload_too_large" }, { status: 400 });
   }
 
   // Layer 2: Content-Length can be forged or absent (e.g. chunked transfer
@@ -54,19 +54,19 @@ export async function POST(req: NextRequest) {
     formData = await boundedReq.formData();
   } catch (error) {
     if (error instanceof BodyTooLargeError) {
-      return NextResponse.json({ error: "File exceeds 10MB limit" }, { status: 400 });
+      return NextResponse.json({ error: "upload_too_large" }, { status: 400 });
     }
     console.error("Failed to parse upload request body:", error);
-    return NextResponse.json({ error: "Invalid upload" }, { status: 400 });
+    return NextResponse.json({ error: "upload_invalid" }, { status: 400 });
   }
 
   const file = formData.get("file") as File | null;
   if (!file) {
-    return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    return NextResponse.json({ error: "no_file_provided" }, { status: 400 });
   }
 
   if (file.size > MAX_UPLOAD_BYTES) {
-    return NextResponse.json({ error: "File exceeds 10MB limit" }, { status: 400 });
+    return NextResponse.json({ error: "upload_too_large" }, { status: 400 });
   }
 
   try {
@@ -75,6 +75,6 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("Failed to upload document via rag-api:", error);
     const status = error instanceof RagApiError ? error.status : 500;
-    return NextResponse.json({ error: "Upload failed" }, { status });
+    return NextResponse.json({ error: "upload_failed" }, { status });
   }
 }
