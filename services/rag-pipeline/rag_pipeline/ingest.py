@@ -11,6 +11,7 @@ from rag_pipeline.config import EMBEDDING_DIMENSIONS, Settings, load_settings
 from rag_pipeline.embeddings import embed_texts
 from rag_pipeline.parsing import parse_document
 from rag_pipeline.supabase_client import get_supabase_client
+from rag_pipeline.transactions import parse_transactions_csv
 
 _IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
@@ -144,6 +145,9 @@ def process_document(
         ]
         supabase.table("document_chunks").insert(chunk_rows).execute()
 
+        if path.suffix.lower() == ".csv":
+            _extract_and_store_transactions(supabase, document_id, path, user_id)
+
         supabase.table("documents").update({"status": "completed"}).eq(
             "id", document_id
         ).execute()
@@ -161,6 +165,37 @@ def process_document(
             str(exc) if isinstance(exc, ValueError) else "Failed to process this document.",
         )
         raise
+
+
+def _extract_and_store_transactions(
+    supabase: Any, document_id: str, path: Path, user_id: str
+) -> None:
+    """CSV-only: parse structured transaction rows out of the source file and
+    insert them into `transactions`, if any were found.
+
+    A CSV that doesn't look like a bank export (no recognizable date/amount
+    columns) simply yields no transaction rows - this is not an ingestion
+    failure, so an empty parse result is a no-op rather than raising. Called
+    after the chunk/embed/store block succeeds and before the document is
+    marked "completed", so a failure here still fails the document like any
+    other step in `process_document`.
+    """
+    parsed = parse_transactions_csv(path)
+    if not parsed:
+        return
+
+    transaction_rows = [
+        {
+            "document_id": document_id,
+            "user_id": user_id,
+            "occurred_on": transaction.occurred_on.isoformat(),
+            "amount": str(transaction.amount),
+            "category": transaction.category,
+            "description": transaction.description,
+        }
+        for transaction in parsed
+    ]
+    supabase.table("transactions").insert(transaction_rows).execute()
 
 
 def _mark_failed_with_message(supabase: Any, document_id: str, message: str) -> None:

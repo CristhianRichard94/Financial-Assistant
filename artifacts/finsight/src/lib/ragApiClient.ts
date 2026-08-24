@@ -1,4 +1,5 @@
 import type { Document } from "@/lib/store";
+import type { DashboardSummary, Transaction } from "@/lib/types";
 
 /**
  * Server-side client for the Python rag-api service (services/rag-api).
@@ -136,6 +137,24 @@ export async function deleteDocument(id: string, userId: string): Promise<void> 
     headers: internalAuthHeaders(userId),
   });
   await assertOk(res, "delete document");
+}
+
+export async function getDashboardSummary(userId: string): Promise<DashboardSummary> {
+  const res = await fetch(`${getBaseUrl()}/dashboard/summary`, {
+    cache: "no-store",
+    headers: internalAuthHeaders(userId),
+  });
+  await assertOk(res, "load dashboard summary");
+  return res.json();
+}
+
+export async function getDashboardActivity(userId: string): Promise<Transaction[]> {
+  const res = await fetch(`${getBaseUrl()}/dashboard/activity`, {
+    cache: "no-store",
+    headers: internalAuthHeaders(userId),
+  });
+  await assertOk(res, "load recent activity");
+  return res.json();
 }
 
 export async function queryRag(question: string, userId: string): Promise<QueryResult> {

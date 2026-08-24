@@ -34,6 +34,8 @@ class FakeTableQuery:
         self._op: str | None = None
         self._payload: list[dict[str, Any]] | dict[str, Any] | None = None
         self._filters: list[tuple[str, Any]] = []
+        self._gte_filters: list[tuple[str, Any]] = []
+        self._lte_filters: list[tuple[str, Any]] = []
         self._order: tuple[str, bool] | None = None
         self._limit: int | None = None
 
@@ -59,6 +61,14 @@ class FakeTableQuery:
         self._filters.append((field, value))
         return self
 
+    def gte(self, field: str, value: Any) -> "FakeTableQuery":
+        self._gte_filters.append((field, value))
+        return self
+
+    def lte(self, field: str, value: Any) -> "FakeTableQuery":
+        self._lte_filters.append((field, value))
+        return self
+
     def order(self, field: str, desc: bool = False) -> "FakeTableQuery":
         self._order = (field, desc)
         return self
@@ -68,7 +78,13 @@ class FakeTableQuery:
         return self
 
     def _matches(self, row: dict[str, Any]) -> bool:
-        return all(row.get(field) == value for field, value in self._filters)
+        if not all(row.get(field) == value for field, value in self._filters):
+            return False
+        if not all(row.get(field) is not None and row[field] >= value for field, value in self._gte_filters):
+            return False
+        if not all(row.get(field) is not None and row[field] <= value for field, value in self._lte_filters):
+            return False
+        return True
 
     def execute(self) -> FakeResponse:
         table = self._tables.setdefault(self._name, [])
@@ -155,6 +171,7 @@ def fake_supabase(mocker) -> FakeSupabaseClient:
     mocker.patch("rag_pipeline.ingest.get_supabase_client", return_value=client)
     mocker.patch("rag_pipeline.documents.get_supabase_client", return_value=client)
     mocker.patch("rag_pipeline.search.get_supabase_client", return_value=client)
+    mocker.patch("rag_pipeline.dashboard.get_supabase_client", return_value=client)
     return client
 
 

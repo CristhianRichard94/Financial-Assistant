@@ -27,6 +27,39 @@ class DocumentOut(BaseModel):
     error_message: str | None = Field(default=None, alias="errorMessage")
 
 
+class CategoryBreakdownOut(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    category: str
+    amount: float
+    percentage: float
+
+
+class DashboardSummaryOut(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    total_income: float = Field(alias="totalIncome")
+    total_spending: float = Field(alias="totalSpending")
+    net_savings: float = Field(alias="netSavings")
+    income_trend: float = Field(alias="incomeTrend")
+    spending_trend: float = Field(alias="spendingTrend")
+    savings_trend: float = Field(alias="savingsTrend")
+    document_count: int = Field(alias="documentCount")
+    total_document_count: int = Field(alias="totalDocumentCount")
+    transaction_count: int = Field(alias="transactionCount")
+    category_breakdown: list[CategoryBreakdownOut] = Field(alias="categoryBreakdown")
+
+
+class TransactionOut(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    description: str
+    category: str
+    amount: float
+    date: str
+
+
 class QueryRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
     # Only used by /query/agent (see rag_api/routes/query.py) to thread

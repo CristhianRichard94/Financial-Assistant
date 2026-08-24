@@ -4,6 +4,13 @@ Backed by Supabase/pgvector for storage and similarity search, and OpenAI's
 text-embedding-3-small for embeddings.
 """
 
+from rag_pipeline.dashboard import (
+    CategoryBreakdown,
+    DashboardSummary,
+    TransactionRecord,
+    get_dashboard_summary,
+    get_recent_activity,
+)
 from rag_pipeline.documents import (
     DocumentRecord,
     delete_document,
@@ -28,4 +35,9 @@ __all__ = [
     "list_documents",
     "get_document",
     "delete_document",
+    "get_dashboard_summary",
+    "get_recent_activity",
+    "DashboardSummary",
+    "CategoryBreakdown",
+    "TransactionRecord",
 ]

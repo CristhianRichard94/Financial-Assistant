@@ -10,7 +10,7 @@ from fastapi import FastAPI
 
 from rag_api.config import MAX_UPLOAD_BYTES
 from rag_api.middleware import ContentLengthLimitMiddleware
-from rag_api.routes import documents, health, query
+from rag_api.routes import dashboard, documents, health, query
 
 app = FastAPI(
     title="FinSight RAG API",
@@ -48,3 +48,4 @@ app.add_middleware(ContentLengthLimitMiddleware, max_bytes=MAX_UPLOAD_BYTES)
 app.include_router(health.router)
 app.include_router(documents.router)
 app.include_router(query.router)
+app.include_router(dashboard.router)
