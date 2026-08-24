@@ -174,6 +174,61 @@ def test_mark_document_failed_sets_status(fake_supabase, fake_settings):
     assert row["metadata"]["error"] == "Failed to process this document."
 
 
+def test_process_document_inserts_transactions_for_csv_with_transaction_rows(
+    fake_supabase, fake_settings, fake_embeddings, tmp_path
+):
+    document_id = create_pending_document("statement.csv", USER_ID, settings=fake_settings)
+    csv_path = tmp_path / "statement.csv"
+    csv_path.write_text(
+        "Date,Description,Category,Amount\n"
+        "2026-01-15,Coffee Shop,Dining,-4.50\n"
+        "2026-01-16,Paycheck,Income,2000.00\n"
+    )
+
+    process_document(document_id, csv_path, USER_ID, settings=fake_settings)
+
+    transaction_rows = fake_supabase.tables["transactions"]
+    assert len(transaction_rows) == 2
+    assert all(row["document_id"] == document_id for row in transaction_rows)
+    assert all(row["user_id"] == USER_ID for row in transaction_rows)
+    assert transaction_rows[0]["amount"] == "-4.5"
+    assert transaction_rows[0]["category"] == "Dining"
+    assert transaction_rows[0]["occurred_on"] == "2026-01-15"
+
+    row = next(r for r in fake_supabase.tables["documents"] if r["id"] == document_id)
+    assert row["status"] == "completed"
+
+
+def test_process_document_pdf_never_touches_transactions_table(
+    fake_supabase, fake_settings, fake_embeddings, tmp_path, mocker
+):
+    document_id = create_pending_document("statement.pdf", USER_ID, settings=fake_settings)
+    pdf_path = tmp_path / "statement.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 fake")
+
+    mocker.patch("rag_pipeline.ingest.parse_document", return_value="Some extracted text")
+
+    process_document(document_id, pdf_path, USER_ID, settings=fake_settings)
+
+    assert "transactions" not in fake_supabase.tables
+    row = next(r for r in fake_supabase.tables["documents"] if r["id"] == document_id)
+    assert row["status"] == "completed"
+
+
+def test_process_document_csv_with_zero_parseable_transactions_still_completes(
+    fake_supabase, fake_settings, fake_embeddings, tmp_path
+):
+    document_id = create_pending_document("not_transactions.csv", USER_ID, settings=fake_settings)
+    csv_path = tmp_path / "not_transactions.csv"
+    csv_path.write_text("First Name,Last Name,Email\nJane,Doe,jane@example.com\n")
+
+    process_document(document_id, csv_path, USER_ID, settings=fake_settings)
+
+    assert fake_supabase.tables.get("transactions", []) == []
+    row = next(r for r in fake_supabase.tables["documents"] if r["id"] == document_id)
+    assert row["status"] == "completed"
+
+
 def test_ingest_document_wraps_create_and_process(
     fake_supabase, fake_settings, fake_embeddings, tmp_path
 ):

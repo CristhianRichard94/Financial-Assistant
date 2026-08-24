@@ -48,7 +48,20 @@
     "vsLastMonth": "vs last month",
     "analyzedFrom": "Analyzed from {count, plural, one {# document} other {# documents}}",
     "recentActivity": "Recent Activity",
-    "spendingByCategory": "Spending by Category"
+    "spendingByCategory": "Spending by Category",
+    "summaryError": "Couldn't load your dashboard summary. Please try again.",
+    "activityError": "Couldn't load recent activity. Please try again.",
+    "categoryError": "Couldn't load category breakdown. Please try again.",
+    "tryAgain": "Try again",
+    "emptyTitle": "No financial data yet",
+    "emptyDescription": "Upload a bank statement or CSV to see your overview.",
+    "uploadDocuments": "Upload documents",
+    "processingMessage": "Your documents are still processing. This page will update automatically.",
+    "viewDocuments": "View documents",
+    "zeroTransactionsBanner": "We couldn't find any transactions in your uploaded documents. FinSight currently extracts transactions from CSV bank exports only.",
+    "uploadCsv": "Upload a CSV bank export",
+    "noTransactionsYet": "No transactions found yet.",
+    "noSpendingYet": "No spending data to show yet."
   },
   "documents": {
     "title": "Documents",

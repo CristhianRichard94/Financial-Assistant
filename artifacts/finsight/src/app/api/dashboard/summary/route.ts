@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server";
-import { store } from "@/lib/store";
+import { getDashboardSummary, RagApiError } from "@/lib/ragApiClient";
 import { requireUser } from "@/lib/auth/requireUser";
 
 export async function GET() {
   const { user, response } = await requireUser();
   if (!user) return response;
 
-  return NextResponse.json(store.dashboard.summary());
+  try {
+    const summary = await getDashboardSummary(user.id);
+    return NextResponse.json(summary);
+  } catch (error) {
+    console.error("Failed to load dashboard summary via rag-api:", error);
+    const status = error instanceof RagApiError ? error.status : 500;
+    return NextResponse.json({ error: "Failed to load dashboard summary" }, { status });
+  }
 }

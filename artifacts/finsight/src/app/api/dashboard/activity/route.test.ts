@@ -1,29 +1,42 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextResponse } from "next/server";
 import { GET } from "@/app/api/dashboard/activity/route";
-import { store } from "@/lib/store";
+import type { Transaction } from "@/lib/types";
 
 vi.mock("@/lib/auth/requireUser", () => ({
   requireUser: vi.fn(),
 }));
 
+vi.mock("@/lib/ragApiClient", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/ragApiClient")>("@/lib/ragApiClient");
+  return {
+    ...actual,
+    getDashboardActivity: vi.fn(),
+  };
+});
+
 import { requireUser } from "@/lib/auth/requireUser";
+import { getDashboardActivity, RagApiError } from "@/lib/ragApiClient";
 
 const TEST_USER = { id: "user-1", email: "user@example.com" };
+
+const ACTIVITY: Transaction[] = [
+  {
+    id: "tx-1",
+    description: "Whole Foods Market",
+    category: "Groceries",
+    amount: -87.43,
+    date: "2026-01-01T00:00:00.000Z",
+  },
+];
 
 describe("GET /api/dashboard/activity", () => {
   beforeEach(() => {
     vi.mocked(requireUser).mockResolvedValue({ user: TEST_USER as never });
-    // `store.dashboard.activity()` computes each transaction's `id` (nanoid)
-    // and `date` (relative to `Date.now()`) fresh on every call. Freeze the
-    // clock so a second, independent call made in the test for comparison
-    // produces the same `date` values as the one made by `GET()`.
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    vi.mocked(getDashboardActivity).mockResolvedValue(ACTIVITY);
   });
 
   afterEach(() => {
-    vi.useRealTimers();
     vi.clearAllMocks();
   });
 
@@ -39,22 +52,13 @@ describe("GET /api/dashboard/activity", () => {
     expect(body).toEqual({ error: "Unauthorized" });
   });
 
-  it("returns the store's recent activity as JSON", async () => {
+  it("returns recent activity from rag-api as JSON", async () => {
     const res = await GET();
     const body = await res.json();
 
-    // `store.dashboard.activity()` also generates a fresh `id` (nanoid) per
-    // call, so compare everything except `id` rather than deep-equaling
-    // against a second independent call.
-    const expected = store.dashboard.activity();
     expect(res.status).toBe(200);
-    expect(body).toHaveLength(expected.length);
-    expect(body.map((tx: { id: string; [k: string]: unknown }) => {
-      const { id, ...rest } = tx;
-      return rest;
-    })).toEqual(
-      expected.map(({ id, ...rest }) => rest)
-    );
+    expect(body).toEqual(ACTIVITY);
+    expect(getDashboardActivity).toHaveBeenCalledWith(TEST_USER.id);
   });
 
   it("returns a list of transactions with the expected shape", async () => {
@@ -62,7 +66,6 @@ describe("GET /api/dashboard/activity", () => {
     const body = await res.json();
 
     expect(Array.isArray(body)).toBe(true);
-    expect(body.length).toBeGreaterThan(0);
     expect(body[0]).toMatchObject({
       id: expect.any(String),
       description: expect.any(String),
@@ -70,5 +73,15 @@ describe("GET /api/dashboard/activity", () => {
       amount: expect.any(Number),
       date: expect.any(String),
     });
+  });
+
+  it("passes through the rag-api error status on failure", async () => {
+    vi.mocked(getDashboardActivity).mockRejectedValue(new RagApiError(502, "boom"));
+
+    const res = await GET();
+    const body = await res.json();
+
+    expect(res.status).toBe(502);
+    expect(body).toEqual({ error: "Failed to load recent activity" });
   });
 });

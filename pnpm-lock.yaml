@@ -91,6 +91,9 @@ importers:
 
   .:
     devDependencies:
+      '@rollup/rollup-win32-x64-msvc':
+        specifier: ^4.62.5
+        version: 4.62.5
       '@tailwindcss/oxide-win32-x64-msvc':
         specifier: 4.3.2
         version: 4.3.2
@@ -1336,6 +1339,11 @@ packages:
     cpu: [x64]
     os: [linux]
     libc: [glibc]
+
+  '@rollup/rollup-win32-x64-msvc@4.62.5':
+    resolution: {integrity: sha512-/gDJaRs4gl0NPIwqCz+6PkpmhhjRAD2j6P4rSNHBzUkO3naEx2mIU0pRle1vUNRQ7mE/+8OOeXLTv/J56FKiQg==}
+    cpu: [x64]
+    os: [win32]
 
   '@scalar/helpers@0.8.2':
     resolution: {integrity: sha512-qNbqUjSB3S4Gr4A0oANcm5G1Ip+EqBxICYKhe9YzmnaBpbmW6shxqpiivApTvvuDf+uIhR3uMwWyVQbYcGLsxA==}
@@ -3979,6 +3987,8 @@ snapshots:
 
   '@rollup/rollup-linux-x64-gnu@4.62.2':
     optional: true
+
+  '@rollup/rollup-win32-x64-msvc@4.62.5': {}
 
   '@scalar/helpers@0.8.2': {}
 

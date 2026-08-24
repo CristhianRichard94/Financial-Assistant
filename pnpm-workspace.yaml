@@ -2,6 +2,11 @@ packages:
   - artifacts/*
   - lib/*
 
+allowBuilds:
+  esbuild: true
+  msw: true
+  sharp: true
+
 autoInstallPeers: false
 
 catalog:

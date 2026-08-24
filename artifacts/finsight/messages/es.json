@@ -48,7 +48,20 @@
     "vsLastMonth": "vs. mes anterior",
     "analyzedFrom": "Analizado a partir de {count, plural, one {# documento} other {# documentos}}",
     "recentActivity": "Actividad reciente",
-    "spendingByCategory": "Gastos por categoría"
+    "spendingByCategory": "Gastos por categoría",
+    "summaryError": "No se pudo cargar el resumen del panel. Inténtalo de nuevo.",
+    "activityError": "No se pudo cargar la actividad reciente. Inténtalo de nuevo.",
+    "categoryError": "No se pudo cargar el desglose por categoría. Inténtalo de nuevo.",
+    "tryAgain": "Reintentar",
+    "emptyTitle": "Aún no hay datos financieros",
+    "emptyDescription": "Sube un estado de cuenta o CSV para ver tu panorama.",
+    "uploadDocuments": "Subir documentos",
+    "processingMessage": "Tus documentos aún se están procesando. Esta página se actualizará automáticamente.",
+    "viewDocuments": "Ver documentos",
+    "zeroTransactionsBanner": "No encontramos transacciones en tus documentos subidos. FinSight actualmente extrae transacciones solo de exportaciones CSV bancarias.",
+    "uploadCsv": "Subir una exportación CSV bancaria",
+    "noTransactionsYet": "Aún no se encontraron transacciones.",
+    "noSpendingYet": "Aún no hay datos de gastos que mostrar."
   },
   "documents": {
     "title": "Documentos",
