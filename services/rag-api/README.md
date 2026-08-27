@@ -1,9 +1,10 @@
 # RAG API
 
 A FastAPI HTTP service that exposes the [`rag-pipeline`](../rag-pipeline)
-library over HTTP: document upload/listing/deletion, and a `/query` endpoint
-that retrieves relevant chunks and asks OpenAI to synthesize an answer from
-them.
+library over HTTP: document upload/listing/deletion, a `/query` (and agent-based
+`/query/agent`) endpoint that retrieves relevant chunks and asks OpenAI to
+synthesize an answer from them, and `/dashboard/*` endpoints that aggregate a
+user's stored transactions for the frontend's overview dashboard.
 
 This is the backend the FinSight frontend (`artifacts/finsight`) talks to via
 its own Next.js API routes, which proxy requests here server-to-server (see
@@ -23,6 +24,9 @@ route except `/healthz` (see `rag_api/auth.py`).
 | `POST` | `/upload` | Upload a file (`multipart/form-data`, field `file`); ingestion runs in the background |
 | `DELETE` | `/documents/{document_id}` | Delete a document and its chunks |
 | `POST` | `/query` | Ask a question; retrieves relevant chunks and asks OpenAI for an answer |
+| `POST` | `/query/agent` | Same contract as `/query`, answered by a LangGraph agent (parse → retrieve → retry with broadened filters on an empty hit → generate) with multi-turn conversation memory via `conversation_id`; not yet called by the frontend |
+| `GET` | `/dashboard/summary` | Income/spending/savings totals + category breakdown, computed from the user's stored transactions (cached, 30s TTL, in `rag-pipeline`) |
+| `GET` | `/dashboard/activity` | Recent transactions list for the dashboard |
 
 ## Local development
 

@@ -11,7 +11,7 @@ Status legend: ✅ Done · 🟡 Partial / in progress · ⬜ Not started · ➖ 
 - [x] ➖ Watch the Replit + Next.js walkthrough — not a code deliverable, assumed done by the user
 - [x] ✅ Build a file upload component (accept PDF, CSV, images) — drag-and-drop + browse button in `DocumentsView.tsx` (`react-dropzone`), accepts `.pdf/.csv/.jpg/.jpeg/.png`
 - [x] ✅ Build a chat interface where users type financial questions — `/chat`, full-height layout, bubbles, typing indicator, auto-scroll
-- [x] ✅ Add a dashboard skeleton showing placeholder summaries (spending, income, etc.) — `/dashboard`, income/spending/savings cards, recent activity, category breakdown, loading skeletons
+- [x] ✅ Add a dashboard skeleton showing placeholder summaries (spending, income, etc.) — `/dashboard`, income/spending/savings cards, recent activity, category breakdown, loading skeletons. Since superseded by real data: see "Beyond the original checklist" below.
 - [x] ✅ Wire up basic state management — uploaded files list, chat history — TanStack Query for server state (documents, chat, dashboard), local state for drag/upload-progress/input
 
 **Status: complete.** One regression to fix (tracked below): the file-upload component's 10MB client-side size check was dropped when the upload route was rewired to the real backend.
@@ -40,7 +40,7 @@ Merged to `main` (`558d839`, on top of merge `1dd0c2a`), 4 review rounds. Worktr
 
 - [x] Build a Python API (FastAPI) with these endpoints:
   - [x] ✅ `POST /upload` — accepts documents, triggers the Day-2 processing pipeline via `BackgroundTasks`; streaming multipart parsing (closes a Starlette-buffering DoS found in review), extension/size/magic-byte validation, filename sanitization
-  - [x] ✅ `POST /query` — accepts a question, runs RAG (retrieve top-k chunks → prompt Claude → return answer); filename escaping at the Claude-prompt interpolation point fixed and verified (prompt-injection hardening)
+  - [x] ✅ `POST /query` — accepts a question, runs RAG (retrieve top-k chunks → prompt OpenAI → return answer); filename escaping at the prompt interpolation point fixed and verified (prompt-injection hardening)
   - [x] ✅ `GET /documents` — list uploaded documents, mapped to frontend status values
 - [ ] 🟡 Deploy to AWS (Lambda + API Gateway, or ECS — your choice) — **chosen: ECS Fargate + CDK** (justified over Lambda because background ingestion needs a long-lived process, not a frozen-after-response Lambda). Dockerfile, CDK stack (internal ALB, Secrets Manager-backed API keys), and `DEPLOYMENT.md` are all built and ready. **Not actually deployed** — no AWS CLI/credentials in this sandbox, and the user explicitly chose "build deployable artifacts only" over live provisioning. Live deploy is the user's to run.
 - [x] ✅ Connect the Next.js frontend to the deployed backend — Next.js (and mirrored Express) route handlers proxy to the Python API via a server-only `RAG_API_BASE_URL` + shared-secret header. ("Deployed backend" itself doesn't exist yet since AWS deploy is the user's step — wiring points at whatever `RAG_API_BASE_URL` is set to, local or deployed.)
@@ -64,6 +64,33 @@ All three services run locally with placeholder Supabase/OpenAI/Anthropic creden
 This testing surfaced and fixed two bugs:
 1. `artifacts/api-server`'s mirrored upload route leaked a raw stack trace (500) on oversized files instead of a clean 400. Fixed, reviewed (ship/ship), merged `c7b6549` (`fix/multer-error-leak`, worktree/branch removed).
 2. Every frontend data-fetching hook (`DocumentsView`, `ChatView`, `DashboardView`) parsed `fetch()` responses as JSON without checking `res.ok`, so a real backend error crashed the Documents page (`data.some is not a function` in `refetchInterval`) instead of showing an error state. Fixed all 5 call sites + added error-state UI to `DocumentsView`/`ChatView`. Reviewed (ship/ship — both reviewers noted no browser tooling was available in this sandbox to reproduce the crash directly; verified by code inspection + typecheck instead), merged `48bf1ce` (`fix/query-error-handling`, worktree/branch removed).
+
+## Beyond the original checklist
+
+Work merged after the "Verified locally (2026-07-06)" entry above, outside the
+assignment checklist this file otherwise tracks:
+
+- **Real dashboard data** (`b14d11e`) — `/dashboard/summary` and `/dashboard/activity`
+  now compute from stored documents/transactions via `services/rag-api`, replacing
+  the old `store.ts` mock. The dashboard skeleton item above is superseded by this.
+- **Dashboard aggregate caching** (`0d88915`) — 30s per-user TTL cache in
+  `rag-pipeline`, invalidated on document create/process/delete.
+- **Soft dashboard error states** (`29cd300`) — a backend hiccup shows a quiet
+  notice instead of an alarming retry banner.
+- **Chat messages persisted in Supabase** (`chat_messages` table, RLS-scoped) —
+  message history no longer lives in the in-memory mock store; only the assistant's
+  reply text comes from `rag-api`'s `/query`.
+- **LangGraph query agent** (`e71acb9`, `0d1106b`) — `POST /query/agent` in
+  `rag-api`, with retrieval retry on empty hits and multi-turn conversation memory
+  via a checkpointer. Built and tested, but the frontend still calls plain `/query`
+  — not wired up yet.
+- **Spanish/English i18n** (`e5258bd`) — `next-intl`, Spanish default.
+- **DeepEval-based RAG evaluation suite** (`743876b`) — `services/rag-eval/`, runs
+  against real `rag-pipeline`/`rag-api` code (no mocks), excluded from default CI.
+- **Removed the Replit-era Express `artifacts/api-server`** (`e8bbbb8`) — the
+  earlier "Next.js (and mirrored Express) route handlers" duplication mentioned
+  elsewhere in this file no longer exists; Next.js Route Handlers are the only API
+  layer now.
 
 ## Currently in flight
 
