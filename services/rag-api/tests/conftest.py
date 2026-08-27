@@ -10,11 +10,26 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from rag_api import rate_limiter
 from rag_api.main import app
 
 TEST_INTERNAL_API_KEY = "test-internal-api-key"
 TEST_USER_ID = "11111111-1111-1111-1111-111111111111"
 OTHER_TEST_USER_ID = "22222222-2222-2222-2222-222222222222"
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """The per-user rate limiter (rag_api.rate_limiter) is process-global
+    module state. Many test modules reuse the same TEST_USER_ID across
+    dozens of cases within the same test run (well within the limiter's
+    trailing window), so without resetting it between tests, unrelated
+    tests could start tripping 429s purely from earlier tests' requests
+    still counting against the same user's window.
+    """
+    rate_limiter.reset_for_tests()
+    yield
+    rate_limiter.reset_for_tests()
 
 
 @pytest.fixture(autouse=True)

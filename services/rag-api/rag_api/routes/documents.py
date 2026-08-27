@@ -24,6 +24,7 @@ from rag_pipeline.config import load_settings as load_pipeline_settings
 
 from rag_api.auth import require_internal_api_key, require_user_id
 from rag_api.config import RagApiSettings, load_rag_api_settings
+from rag_api.rate_limiter import require_upload_rate_limit
 from rag_api.schemas import DocumentOut
 from rag_api.status_mapping import document_record_to_out, infer_document_type
 
@@ -279,6 +280,7 @@ async def upload_document(
     request: Request,
     background_tasks: BackgroundTasks,
     user_id: str = Depends(require_user_id),
+    _rate_limit: None = Depends(require_upload_rate_limit),
 ) -> DocumentOut:
     # Deliberately does not declare `file: UploadFile = File(...)` - see
     # `_stream_multipart_file`'s docstring for why. The request body is

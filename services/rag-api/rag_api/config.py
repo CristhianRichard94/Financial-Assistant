@@ -34,6 +34,25 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB, matches the frontend's own limit.
 
 ALLOWED_EXTENSIONS = {".pdf", ".csv", ".jpg", ".jpeg", ".png"}
 
+# Default per-user request-rate limits enforced by rag_api.rate_limiter (see
+# that module's docstring for the algorithm/window used). Kept as named
+# module constants, mirroring MAX_UPLOAD_BYTES above, so the actual numbers
+# live in one place instead of being scattered as magic numbers across route
+# code. Overridable via the QUERY_RATE_LIMIT_PER_MINUTE/
+# UPLOAD_RATE_LIMIT_PER_MINUTE env vars - see `load_rag_api_settings` below,
+# which re-reads them per call (same reasoning as AGENT_CHECKPOINT_DB_PATH
+# just below: deliberately not frozen at import time, so a deployment can be
+# tuned without a code change, and tests can monkeypatch a different value
+# per test).
+# /query and /query/agent (routes/query.py) share QUERY_RATE_LIMIT_PER_MINUTE
+# - both trigger at least one paid OpenAI call per request, and a client
+# could otherwise dodge a per-route limit by alternating between the two.
+# /upload (routes/documents.py) gets its own, lower
+# UPLOAD_RATE_LIMIT_PER_MINUTE bucket, since parsing/embedding/storing a
+# whole document is heavier than a single query.
+QUERY_RATE_LIMIT_PER_MINUTE = 20
+UPLOAD_RATE_LIMIT_PER_MINUTE = 5
+
 # Default path for the agent's LangGraph checkpointer (see
 # rag_api/agent/graph.py) to persist conversation state. SQLite-file-backed
 # rather than in-memory so conversation history survives across requests
@@ -58,6 +77,8 @@ class RagApiSettings:
     max_upload_bytes: int = MAX_UPLOAD_BYTES
     allowed_extensions: frozenset[str] = frozenset(ALLOWED_EXTENSIONS)
     agent_checkpoint_db_path: str = DEFAULT_AGENT_CHECKPOINT_DB_PATH
+    query_rate_limit_per_minute: int = QUERY_RATE_LIMIT_PER_MINUTE
+    upload_rate_limit_per_minute: int = UPLOAD_RATE_LIMIT_PER_MINUTE
 
 
 def _require_env(name: str) -> str:
@@ -71,19 +92,46 @@ def _require_env(name: str) -> str:
     return value
 
 
+def _int_env(name: str, default: int) -> int:
+    """Read `name` from the environment as an int, falling back to `default`
+    if unset (or set to an empty string). Unlike `_require_env`, this is for
+    optional settings - but if the variable *is* set, it must actually be a
+    valid integer: raises MissingEnvironmentVariable (reusing the same
+    "fail loud rather than silently misbehave" approach as `_require_env`)
+    on a malformed value, instead of silently falling back to `default` or
+    letting a confusing error surface later wherever the value gets used.
+    """
+    raw = os.environ.get(name)
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        raise MissingEnvironmentVariable(
+            f"Environment variable '{name}' must be an integer if set (got {raw!r})."
+        ) from None
+
+
 def load_rag_api_settings() -> RagApiSettings:
     """Load and validate the OpenAI-specific and internal-auth configuration.
 
     Raises MissingEnvironmentVariable with a human-readable message if
-    OPENAI_API_KEY or INTERNAL_API_KEY is absent. Supabase credentials are
-    validated separately by `rag_pipeline.config.load_settings()` wherever
-    the pipeline is actually invoked (it re-reads the same OPENAI_API_KEY
-    env var for embeddings).
+    OPENAI_API_KEY or INTERNAL_API_KEY is absent, or if
+    QUERY_RATE_LIMIT_PER_MINUTE/UPLOAD_RATE_LIMIT_PER_MINUTE is set but not a
+    valid integer. Supabase credentials are validated separately by
+    `rag_pipeline.config.load_settings()` wherever the pipeline is actually
+    invoked (it re-reads the same OPENAI_API_KEY env var for embeddings).
     """
     return RagApiSettings(
         openai_api_key=_require_env("OPENAI_API_KEY"),
         internal_api_key=_require_env("INTERNAL_API_KEY"),
         agent_checkpoint_db_path=os.environ.get(
             "AGENT_CHECKPOINT_DB_PATH", DEFAULT_AGENT_CHECKPOINT_DB_PATH
+        ),
+        query_rate_limit_per_minute=_int_env(
+            "QUERY_RATE_LIMIT_PER_MINUTE", QUERY_RATE_LIMIT_PER_MINUTE
+        ),
+        upload_rate_limit_per_minute=_int_env(
+            "UPLOAD_RATE_LIMIT_PER_MINUTE", UPLOAD_RATE_LIMIT_PER_MINUTE
         ),
     )
