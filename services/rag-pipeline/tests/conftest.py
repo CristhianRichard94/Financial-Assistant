@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 
+from rag_pipeline import dashboard_cache
 from rag_pipeline.config import Settings
 
 
@@ -154,6 +155,19 @@ class FakeSupabaseClient:
 
     def rpc(self, name: str, params: dict[str, Any]) -> FakeRpcQuery:
         return FakeRpcQuery(self, name, params)
+
+
+@pytest.fixture(autouse=True)
+def _reset_dashboard_cache():
+    """The dashboard TTL cache (rag_pipeline.dashboard_cache) is process-
+    global module state. Several test modules reuse the same `USER_ID`
+    across many cases within the same test run (well within the cache's TTL
+    window), so without resetting it between tests a case could see a
+    stale cached value left over from an earlier, unrelated test.
+    """
+    dashboard_cache.reset_for_tests()
+    yield
+    dashboard_cache.reset_for_tests()
 
 
 @pytest.fixture
