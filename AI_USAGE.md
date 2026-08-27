@@ -11,8 +11,8 @@ reconstructing them at the end.
 - pnpm workspace, Node.js, TypeScript
 - **Frontend**: Next.js 15 (App Router) — `artifacts/finsight/`
 - **API**: Next.js Route Handlers — `artifacts/finsight/src/app/api/**`, own all `/api/*` routes; no separate Express server (the previously-mirrored `artifacts/api-server/` was dropped, see the 2026-07-09 log entry below)
-- **Data**: in-memory mock store (`artifacts/finsight/src/lib/store.ts`, renamed from `finSightStore.ts`) still backs dashboard summary/activity; a Drizzle + Postgres package (`lib/db/`) exists but isn't wired up yet
-- **RAG backend**: `services/rag-pipeline/` (Supabase/pgvector ingestion + similarity search, merged `f552192`) and `services/rag-api/` (FastAPI HTTP service wrapping it: `POST /upload`, `POST /query`, `GET /documents`, `DELETE /documents/{id}`) — documents and chat now proxy through to this real backend via server-side Next.js routes instead of the mock store. AWS deploy artifacts (ECS Fargate + CDK) exist but were never applied — no AWS credentials in this environment.
+- **Data**: no mock store left — dashboard/documents/chat all read from `services/rag-api`; chat messages are additionally persisted in Supabase (`chat_messages`, RLS-scoped). `artifacts/finsight/src/lib/store.ts` (renamed from `finSightStore.ts`) now only supplies `Document`/`ChatMessage` types; a Drizzle + Postgres package (`lib/db/`) exists but isn't wired up yet
+- **RAG backend**: `services/rag-pipeline/` (Supabase/pgvector ingestion + similarity search + dashboard aggregation, merged `f552192`) and `services/rag-api/` (FastAPI HTTP service wrapping it: `POST /upload`, `POST /query`, `POST /query/agent`, `GET /documents`, `DELETE /documents/{id}`, `GET /dashboard/summary`, `GET /dashboard/activity`) — documents, chat, and dashboard all proxy through to this real backend via server-side Next.js routes; no mock store remains. AWS deploy artifacts (ECS Fargate + CDK) exist but were never applied — no AWS credentials in this environment.
 
 ## Agents & Tools Used
 
@@ -441,6 +441,8 @@ reviewers care about most, since it shows judgment rather than blind acceptance.
   there was no prior stack and no migration; earlier drafts of this file incorrectly described a
   Vite→Next.js migration and a Python/FastAPI/Supabase/pgvector/AWS stack that never existed in
   this repo. That content has been removed as inaccurate.
-- The chat feature currently returns mocked responses (`finSightStore.ts`), not a real LLM call —
-  don't describe it as a working RAG pipeline until an actual model integration exists.
+- The chat feature used to return mocked responses (`finSightStore.ts`), not a real LLM call — this
+  note applied through the merges logged above. It no longer holds: chat now calls `rag-api`'s
+  `/query` (OpenAI-backed) for real answers, with message history persisted in Supabase. Left here
+  for the historical record rather than deleted.
 

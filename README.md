@@ -25,31 +25,55 @@ independent Python RAG backend.
 
 ## Architecture
 
-```
-Browser
-  │
-  ▼
-Next.js 15 App Router (artifacts/finsight)
-  │  /dashboard  /documents  /chat
-  │
-  ▼
-Next.js API routes (src/app/api/**)
-  │
-  │ server-to-server only (RAG_API_BASE_URL + X-Internal-Api-Key)
-  ▼
-RAG API — FastAPI (services/rag-api)
-  │
-  ▼
-RAG pipeline library (services/rag-pipeline)
-  │  parse → chunk → embed (OpenAI) → store
-  ▼
-Supabase (Postgres + pgvector)
+```mermaid
+flowchart TB
+    User(["User"])
+
+    subgraph Vercel["Vercel — Next.js 15 (artifacts/finsight)"]
+        direction TB
+        Pages["App Router pages\n/dashboard  /documents  /chat\n(protected route group)"]
+        API["API Route Handlers\nsrc/app/api/**"]
+        Pages --> API
+    end
+
+    subgraph Backend["AWS ECS Fargate — services/rag-api\n(built with CDK, not yet deployed)"]
+        direction TB
+        RagApi["FastAPI\n/upload /documents\n/query  /dashboard/*"]
+        Pipeline["rag-pipeline library\nparse → chunk → embed → search → aggregate"]
+        RagApi --> Pipeline
+    end
+
+    subgraph Supabase["Supabase"]
+        direction TB
+        SAuth["Auth — Google OAuth"]
+        SDB[("Postgres + pgvector\ndocuments, chunks, chat_messages")]
+    end
+
+    OpenAI["OpenAI API\nembeddings + answer synthesis"]
+
+    User -->|HTTPS| Pages
+    User -.->|"/login"| SAuth
+    SAuth -.->|session cookie| Pages
+    API ==>|"server-to-server only\nX-Internal-Api-Key header"| RagApi
+    API -->|"chat_messages\n(RLS-scoped, user's own session)"| SDB
+    Pipeline --> OpenAI
+    Pipeline --> SDB
+    SAuth --> SDB
 ```
 
-- **Frontend**: Next.js 15 (App Router), Tailwind CSS v4, TanStack Query, `sonner` toasts, `react-dropzone` uploads, `next-themes` for light/dark mode.
+Deliberate decisions worth calling out (see [`DECISIONS.md`](./DECISIONS.md) for the full log):
+
+- **RAG backend is a separately deployable service**, not a Next.js API route — Python owns embeddings/vector search/LLM synthesis/dashboard aggregation, decoupled from the frontend's release cycle and runtime.
+- **The RAG API is never reachable from the browser.** Next.js Route Handlers proxy to it server-to-server over a shared-secret `X-Internal-Api-Key` header, keeping `OPENAI_API_KEY` and Supabase service credentials off the client entirely.
+- **Chat message durability is split from answer generation.** User/assistant messages are written straight to Supabase (`chat_messages`, RLS-scoped to the caller's own session) from the Next.js route, while the assistant's reply text comes from a separate call to the RAG API's `/query`. If the RAG API is down, the user's message still saves and a fallback reply is stored instead of losing the message.
+- **Dashboard aggregates are computed on the RAG API** from real stored documents/transactions, behind a short-TTL cache to keep the dashboard responsive under repeated polling — not a Next.js-side mock store.
+- **Auth and app data share one Supabase project** (Postgres + pgvector + Auth), avoiding a second identity provider for a demo-scale app.
+- A LangGraph-based `/query/agent` endpoint (multi-turn conversation memory via a checkpointer) exists in `rag-api` alongside the plain `/query` used today, but isn't called by the frontend yet — built as a drop-in upgrade path, not wired up.
+
+- **Frontend**: Next.js 15 (App Router), Tailwind CSS v4, TanStack Query, `next-intl` (Spanish default, English available), `sonner` toasts, `react-dropzone` uploads, `next-themes` for light/dark mode.
 - **API**: Next.js Route Handlers (`src/app/api/**`), owns all `/api/*` routes.
-- **RAG backend**: a standalone Python service pair — `rag-pipeline` (ingestion/search library) and `rag-api` (FastAPI HTTP wrapper + Claude-powered answer synthesis) — with its own Supabase project and Python dependencies, decoupled from the rest of the monorepo.
-- **Dashboard data** (income/spending/savings summary and activity feed) is still served from an in-memory mock store; documents and chat are wired to the real RAG backend.
+- **RAG backend**: a standalone Python service pair — `rag-pipeline` (ingestion/search/aggregation library) and `rag-api` (FastAPI HTTP wrapper + OpenAI-powered answer synthesis) — with its own Supabase project and Python dependencies, decoupled from the rest of the monorepo.
+- **Dashboard, documents, and chat** are all wired to the real RAG backend — there is no mock data path left in the frontend.
 
 See [`DECISIONS.md`](./DECISIONS.md) for the day-to-day architecture-decisions log kept alongside this codebase.
 
@@ -74,8 +98,9 @@ Uses `@supabase/ssr` and `@supabase/supabase-js` for session handling on both se
 │   ├── api-spec/           OpenAPI spec + orval codegen config
 │   └── api-zod/            Generated Zod schemas (@workspace/api-zod)
 ├── services/
-│   ├── rag-pipeline/       Python: parse → chunk → embed → store → search (Supabase/pgvector)
-│   └── rag-api/            Python: FastAPI wrapper over rag-pipeline + Claude synthesis, AWS CDK deploy artifacts
+│   ├── rag-pipeline/       Python: parse → chunk → embed → store → search → aggregate (Supabase/pgvector)
+│   ├── rag-api/            Python: FastAPI wrapper over rag-pipeline + OpenAI synthesis, AWS CDK deploy artifacts
+│   └── rag-eval/           Python: DeepEval-based RAG evaluation suite, runs against real services (excluded from default CI)
 ├── .claude/                Claude Code agents/skills configured for this repo
 ├── CLAUDE.md               Team workflow instructions for AI-assisted development
 ├── DECISIONS.md            Architecture/decisions notes
@@ -92,14 +117,8 @@ Uses `@supabase/ssr` and `@supabase/supabase-js` for session handling on both se
 
 ## Quick start
 
-Frontend + mock dashboard data only (no Python backend needed):
-
-```bash
-pnpm install
-pnpm --filter @workspace/finsight run dev     # http://localhost:23970 (or $PORT)
-```
-
-Full stack, including real document upload/chat via the RAG backend:
+Dashboard, documents, and chat all read from the RAG backend now — there's no
+mock-data path left, so the frontend needs it running to show real data:
 
 ```bash
 # 1. Install JS/TS dependencies
@@ -164,12 +183,14 @@ All under `/api`, served by Next.js Route Handlers (`src/app/api/**`):
 | `DELETE` | `/api/documents/:id` | Delete a document |
 | `GET` | `/api/chat/messages` | Chat history |
 | `POST` | `/api/chat/messages` | Send a message (returns user + assistant messages) |
-| `GET` | `/api/dashboard/summary` | Income/spending/savings totals + category breakdown (mock data) |
-| `GET` | `/api/dashboard/activity` | Recent transactions list (mock data) |
+| `GET` | `/api/dashboard/summary` | Income/spending/savings totals + category breakdown |
+| `GET` | `/api/dashboard/activity` | Recent transactions list |
 
-Document and chat routes proxy server-side to the RAG backend
-(`services/rag-api`); see its [endpoint table](./services/rag-api/README.md#endpoints)
-for what happens behind that proxy.
+All of the above proxy server-side to the RAG backend (`services/rag-api`);
+see its [endpoint table](./services/rag-api/README.md#endpoints) for what
+happens behind that proxy. The `/api/chat/messages` routes additionally read
+and write `chat_messages` directly in Supabase (message history persistence
+is independent of the RAG API call that generates the assistant's reply).
 
 ## Testing
 
@@ -190,8 +211,10 @@ for what happens behind that proxy.
   [https://finsight-assistant.vercel.app](https://finsight-assistant.vercel.app/). `NEXT_PUBLIC_SUPABASE_URL` and
   `NEXT_PUBLIC_SUPABASE_ANON_KEY` are configured there; `RAG_API_BASE_URL`
   and `RAG_API_INTERNAL_KEY` are **not** set yet (rag-api isn't deployed —
-  see below), so `/documents` and `/chat` will error until those are added
-  as Vercel project env vars. `/dashboard` (mock data) works today.
+  see below). Since `/dashboard`, `/documents`, and `/chat` all now call the
+  RAG API for real data (no mock fallback remains), all three will show a
+  soft error state on the deployed frontend until rag-api is deployed and
+  those env vars are added to the Vercel project.
 - AWS deployment artifacts for `rag-api` (ECS Fargate + CDK) are built and
   ready but have **not** been applied — no AWS credentials in this
   development environment. See
