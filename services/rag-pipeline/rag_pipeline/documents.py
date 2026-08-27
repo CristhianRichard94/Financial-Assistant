@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from rag_pipeline.config import Settings, load_settings
+from rag_pipeline.dashboard_cache import invalidate_dashboard_cache
 from rag_pipeline.supabase_client import get_supabase_client
 
 
@@ -79,7 +80,9 @@ def delete_document(document_id: str, user_id: str, settings: Settings | None = 
     owned by a different user - indistinguishable from "doesn't exist").
 
     Deleting a `documents` row cascades to its `document_chunks` rows (see
-    `on delete cascade` in sql/003_create_document_chunks_table.sql).
+    `on delete cascade` in sql/003_create_document_chunks_table.sql) and to
+    any `transactions` rows parsed from it (see `on delete cascade` in
+    sql/013_create_transactions_table.sql).
     """
     settings = settings or load_settings()
     supabase = get_supabase_client(settings.supabase_url, settings.supabase_service_key)
@@ -91,4 +94,10 @@ def delete_document(document_id: str, user_id: str, settings: Settings | None = 
         .eq("user_id", user_id)
         .execute()
     )
-    return len(response.data) > 0
+    deleted = len(response.data) > 0
+    if deleted:
+        # Only invalidate once the delete has actually removed a row (owned
+        # by this user) - a no-op delete (missing/other-user's document)
+        # changed nothing, so there's nothing to invalidate.
+        invalidate_dashboard_cache(user_id)
+    return deleted

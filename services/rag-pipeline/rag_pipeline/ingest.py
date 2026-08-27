@@ -8,6 +8,7 @@ from typing import Any
 
 from rag_pipeline.chunking import chunk_text
 from rag_pipeline.config import EMBEDDING_DIMENSIONS, Settings, load_settings
+from rag_pipeline.dashboard_cache import invalidate_dashboard_cache
 from rag_pipeline.embeddings import embed_texts
 from rag_pipeline.parsing import parse_document
 from rag_pipeline.supabase_client import get_supabase_client
@@ -79,6 +80,11 @@ def create_pending_document(
         )
         .execute()
     )
+    # The new row bumps the dashboard summary's total_document_count
+    # immediately (even before ingestion finishes), so the cache must be
+    # invalidated right after the insert succeeds, not deferred until
+    # process_document completes.
+    invalidate_dashboard_cache(user_id)
     return document_row.data[0]["id"]
 
 
@@ -152,6 +158,11 @@ def process_document(
             "id", document_id
         ).execute()
 
+        # Ingestion just changed this user's transactions (for CSVs) and
+        # this document's status/document_count bucket - the cached
+        # summary/activity must not be served stale after this point.
+        invalidate_dashboard_cache(user_id)
+
         return IngestResult(
             document_id=document_id,
             filename=path.name,
@@ -159,6 +170,19 @@ def process_document(
             embedding_dimensions=EMBEDDING_DIMENSIONS,
         )
     except Exception as exc:
+        # Invalidate first, before attempting the failure-status update:
+        # a failure here can happen after transaction rows were already
+        # inserted (e.g. the final "completed" status update itself
+        # failing), so the cache may already be stale by this point even
+        # though the document ends up "failed" rather than "completed".
+        # This must run unconditionally - if it were placed after
+        # `_mark_failed_with_message` instead, a second Supabase failure
+        # on *that* call (plausible during an outage) would raise before
+        # invalidation ever ran, propagating out of `process_document`
+        # with a stale cache left behind for the full TTL. Invalidation
+        # itself is a local, in-memory operation that cannot raise, so
+        # doing it first is always safe.
+        invalidate_dashboard_cache(user_id)
         _mark_failed_with_message(
             supabase,
             document_id,
@@ -230,6 +254,23 @@ def mark_document_failed(document_id: str, settings: Settings | None = None) -> 
     Raises if the update itself fails (e.g. Supabase is unreachable) -
     callers that want this to be fully best-effort should catch and log,
     not let a secondary failure here mask the original ingestion error.
+
+    Deliberately does not invalidate the dashboard cache itself (it also
+    doesn't receive a `user_id` to invalidate by). Two cases lead here from
+    rag_api's background-ingestion fallback, and both are already covered
+    without it:
+    - The failure happened before `process_document` ever ran, or before it
+      wrote anything to `transactions`/`document_chunks` (e.g.
+      `load_settings()`, the Supabase client construction, or
+      `process_document`'s own "processing" status update itself failing) -
+      no data actually changed, so there is nothing to invalidate.
+    - The failure happened inside `process_document`'s own try block, where
+      transaction rows for a CSV may already have been written -
+      `process_document`'s own except block invalidates the cache
+      unconditionally, *before* it even attempts its own failure-status
+      update, so invalidation has already happened by the time this
+      fallback ever runs for that case, regardless of whether that update
+      (or this one) also fails.
     """
     settings = settings or load_settings()
     supabase = get_supabase_client(settings.supabase_url, settings.supabase_service_key)

@@ -4,6 +4,12 @@ sql/013_create_transactions_table.sql and rag_pipeline/transactions.py).
 Everything here reads via the service-role Supabase client (bypassing RLS,
 same as the rest of rag_pipeline) and scopes explicitly to a `user_id`
 argument, mirroring `documents.py`'s convention.
+
+The public `get_dashboard_summary`/`get_recent_activity` functions are thin
+cached wrappers around `_compute_dashboard_summary`/`_compute_recent_activity`,
+which hold the actual Supabase queries; see `dashboard_cache.py` for the
+short-TTL, per-user cache itself and for where cache invalidation on write
+happens (document upload/delete, in `ingest.py`/`documents.py`).
 """
 
 from __future__ import annotations
@@ -14,6 +20,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from rag_pipeline.config import Settings, load_settings
+from rag_pipeline.dashboard_cache import cached_activity, cached_summary
 from rag_pipeline.supabase_client import get_supabase_client
 
 _DEFAULT_ACTIVITY_LIMIT = 20
@@ -102,7 +109,16 @@ def get_dashboard_summary(
     totals and trends (current month-to-date vs the same span of the
     previous month), document counts, and a spending-only category
     breakdown.
+
+    Cached per `user_id` for `dashboard_cache.TTL_SECONDS`; see
+    `dashboard_cache.py`.
     """
+    return cached_summary(user_id, lambda: _compute_dashboard_summary(user_id, settings))
+
+
+def _compute_dashboard_summary(
+    user_id: str, settings: Settings | None = None
+) -> DashboardSummary:
     settings = settings or load_settings()
     supabase = get_supabase_client(settings.supabase_url, settings.supabase_service_key)
 
@@ -174,7 +190,19 @@ def get_recent_activity(
     user_id: str, limit: int = _DEFAULT_ACTIVITY_LIMIT, settings: Settings | None = None
 ) -> list[TransactionRecord]:
     """Return the `limit` most recent transactions for `user_id`, most
-    recently occurred first."""
+    recently occurred first.
+
+    Cached per `user_id`/`limit` for `dashboard_cache.TTL_SECONDS`; see
+    `dashboard_cache.py`.
+    """
+    return cached_activity(
+        user_id, limit, lambda: _compute_recent_activity(user_id, limit, settings)
+    )
+
+
+def _compute_recent_activity(
+    user_id: str, limit: int, settings: Settings | None = None
+) -> list[TransactionRecord]:
     settings = settings or load_settings()
     supabase = get_supabase_client(settings.supabase_url, settings.supabase_service_key)
 
