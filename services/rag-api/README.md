@@ -50,6 +50,7 @@ cp .env.example .env
 | `SUPABASE_SERVICE_KEY` | Supabase dashboard -> Project Settings -> API -> `service_role` secret key |
 | `OPENAI_API_KEY` | https://platform.openai.com/api-keys (used for both embeddings and answer synthesis) |
 | `INTERNAL_API_KEY` | Any long random string you generate yourself, e.g. `openssl rand -hex 32` - must match `RAG_API_INTERNAL_KEY` in the frontend's own environment |
+| `AGENT_CHECKPOINT_DB_URL` (optional for local dev; required before deploying via the CDK stack in `infra/`) | A Supabase **Session pooler** connection string (Project Settings -> Database -> Connection string), used to persist multi-turn agent conversation memory in Postgres. Leave unset for local dev - falls back to a local SQLite file (see `rag_api/agent/graph.py`). The CDK stack in `infra/` pulls this unconditionally as one of its 5 required Secrets Manager secrets, so `cdk deploy` will fail unless it's created first (see `DEPLOYMENT.md`) |
 
 ### 3. Run the API
 

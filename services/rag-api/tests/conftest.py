@@ -27,12 +27,21 @@ def rag_api_settings_env(monkeypatch, tmp_path):
     leaks conversation history between unrelated tests that happen to reuse
     the same conversation_id (or none) - each test gets its own SQLite file
     and thus its own entry in the module-level checkpointer cache.
+
+    Also clears AGENT_CHECKPOINT_DB_URL, so `load_rag_api_settings()` (which
+    reads it straight from `os.environ`) can never pick up a real Postgres
+    URL left in the developer's shell/`.env` (e.g. the value DEPLOYMENT.md/
+    .env.example walk developers through setting for manual testing against
+    Supabase) and try to open a real `ConnectionPool` against it during
+    `/query/agent` route tests. Without this, the test suite's "zero
+    external dependencies" guarantee only holds by accident.
     """
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key")
     monkeypatch.setenv("INTERNAL_API_KEY", TEST_INTERNAL_API_KEY)
     monkeypatch.setenv(
         "AGENT_CHECKPOINT_DB_PATH", str(tmp_path / "agent_checkpoints_test.sqlite")
     )
+    monkeypatch.delenv("AGENT_CHECKPOINT_DB_URL", raising=False)
 
 
 @pytest.fixture

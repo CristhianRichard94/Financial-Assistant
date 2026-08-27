@@ -43,6 +43,10 @@ ALLOWED_EXTENSIONS = {".pdf", ".csv", ".jpg", ".jpeg", ".png"}
 # which re-reads the env var per call (unlike OPENAI_CHAT_MODEL above, this
 # one is deliberately re-read rather than frozen at import time, so tests
 # can point each test run at its own isolated file via monkeypatch).
+#
+# This is only ever actually used when AGENT_CHECKPOINT_DB_URL is unset
+# (local dev / pytest) - see agent_checkpoint_db_url below and
+# rag_api/agent/graph.py for why real deployments use Postgres instead.
 DEFAULT_AGENT_CHECKPOINT_DB_PATH = "agent_checkpoints.sqlite"
 
 
@@ -58,6 +62,14 @@ class RagApiSettings:
     max_upload_bytes: int = MAX_UPLOAD_BYTES
     allowed_extensions: frozenset[str] = frozenset(ALLOWED_EXTENSIONS)
     agent_checkpoint_db_path: str = DEFAULT_AGENT_CHECKPOINT_DB_PATH
+    # Postgres connection string for the agent's checkpointer (see
+    # rag_api/agent/graph.py). Optional and unset by default (hence
+    # os.environ.get, not _require_env below) so local dev and pytest keep
+    # working with zero external dependencies via the SQLite fallback above.
+    # When set in real deployments, this is a Secrets-Manager-sourced value
+    # (see infra/rag_api_stack.py) - never log this value or include it in
+    # an exception message, it embeds a DB credential.
+    agent_checkpoint_db_url: str | None = None
 
 
 def _require_env(name: str) -> str:
@@ -86,4 +98,5 @@ def load_rag_api_settings() -> RagApiSettings:
         agent_checkpoint_db_path=os.environ.get(
             "AGENT_CHECKPOINT_DB_PATH", DEFAULT_AGENT_CHECKPOINT_DB_PATH
         ),
+        agent_checkpoint_db_url=os.environ.get("AGENT_CHECKPOINT_DB_URL"),
     )

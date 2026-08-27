@@ -124,7 +124,7 @@ pnpm --filter @workspace/finsight run dev
 | App | File | Key variables |
 | --- | --- | --- |
 | `artifacts/finsight` | `.env.local` (gitignored, copy from `.env.example`) | `RAG_API_BASE_URL`, `RAG_API_INTERNAL_KEY` |
-| `services/rag-api` | `.env` (gitignored, copy from `.env.example`) | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `OPENAI_API_KEY`, `INTERNAL_API_KEY` |
+| `services/rag-api` | `.env` (gitignored, copy from `.env.example`) | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `OPENAI_API_KEY`, `INTERNAL_API_KEY`, `AGENT_CHECKPOINT_DB_URL` (optional for local dev, falls back to SQLite; required before deploying via the CDK stack in `services/rag-api/infra/`) |
 | `services/rag-pipeline` | `.env` (gitignored, copy from `.env.example`) | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `OPENAI_API_KEY` |
 
 `RAG_API_INTERNAL_KEY` (frontend) and `INTERNAL_API_KEY` (rag-api) must be the

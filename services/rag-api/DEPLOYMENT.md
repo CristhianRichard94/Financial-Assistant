@@ -40,7 +40,7 @@ this manual ECR push is only needed if you want to build/push the image
 independently of CDK (e.g. to test it locally with `docker run` first, or to
 push from a CI pipeline that doesn't run CDK).
 
-## 2. Create the 4 required secrets in Secrets Manager
+## 2. Create the 5 required secrets in Secrets Manager
 
 The CDK stack expects these exact secret names (see `SECRET_NAMES` in
 `infra/rag_api_stack.py`), each holding a single plaintext string value (not
@@ -66,6 +66,20 @@ aws secretsmanager create-secret \
 aws secretsmanager create-secret \
   --name finsight/rag-api/INTERNAL_API_KEY \
   --secret-string "$(openssl rand -hex 32)"
+
+# Postgres connection string for the agent's LangGraph checkpointer (see
+# rag_api/agent/graph.py) - this is what makes multi-turn conversation
+# memory survive ECS task restarts/redeploys, since this service has no
+# persistent volume of its own. Use your Supabase project's Session pooler
+# connection string, not the Transaction pooler and not the direct
+# connection: Supabase dashboard -> Project Settings -> Database ->
+# Connection string -> Session pooler. (The Transaction pooler doesn't
+# support the session-level features PostgresSaver relies on, and the direct
+# connection isn't reachable/appropriate from a serverless-style pooled
+# environment like Fargate.)
+aws secretsmanager create-secret \
+  --name finsight/rag-api/AGENT_CHECKPOINT_DB_URL \
+  --secret-string "postgresql://postgres.your-project-ref:your-db-password@aws-0-your-region.pooler.supabase.com:5432/postgres"
 ```
 
 ## 3. Install the CDK app's Python dependencies

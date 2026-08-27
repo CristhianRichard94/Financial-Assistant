@@ -16,6 +16,13 @@ dependencies = [
     "python-multipart>=0.0.9",
     "langgraph>=0.2.0",
     "langgraph-checkpoint-sqlite>=2.0.0",
+    # Postgres-backed checkpointer used when AGENT_CHECKPOINT_DB_URL is set
+    # (real deployments) - see rag_api/agent/graph.py. langgraph-checkpoint-
+    # sqlite above stays a hard dependency (not optional) because it's also
+    # the fallback path used by local dev and pytest with zero external
+    # services.
+    "langgraph-checkpoint-postgres>=2.0.0",
+    "psycopg[binary,pool]>=3.1.0",
     # Local path dependency on the sibling rag-pipeline package. `{root:uri}`
     # is a Hatchling build-time context variable that expands to this
     # package's own directory as a file:// URI, so this resolves relative to

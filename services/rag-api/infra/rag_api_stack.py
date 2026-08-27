@@ -44,11 +44,21 @@ DOCKERFILE_RELATIVE_PATH = "services/rag-api/Dockerfile"
 # security-group lockdown to CloudFront-only traffic (see below) are only a
 # network-layer speed bump, not real access control, so this header check
 # remains the *primary* access control for this service.
+#
+# AGENT_CHECKPOINT_DB_URL is the Postgres connection string the agent's
+# LangGraph checkpointer uses to persist multi-turn conversation state (see
+# rag_api/agent/graph.py) - it's pulled from Secrets Manager, not a plaintext
+# env var, for the same reason SUPABASE_SERVICE_KEY is: it embeds a DB
+# credential. This ECS task has no persistent volume (no EFS mount anywhere
+# in this stack), so without a Postgres-backed checkpointer, conversation
+# memory would live only on the task's ephemeral filesystem and be wiped on
+# every restart/redeploy/crash.
 SECRET_NAMES: dict[str, str] = {
     "SUPABASE_URL": "finsight/rag-api/SUPABASE_URL",
     "SUPABASE_SERVICE_KEY": "finsight/rag-api/SUPABASE_SERVICE_KEY",
     "OPENAI_API_KEY": "finsight/rag-api/OPENAI_API_KEY",
     "INTERNAL_API_KEY": "finsight/rag-api/INTERNAL_API_KEY",
+    "AGENT_CHECKPOINT_DB_URL": "finsight/rag-api/AGENT_CHECKPOINT_DB_URL",
 }
 
 
@@ -56,7 +66,7 @@ class RagApiStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs: Any) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # Pull all 4 required secrets from Secrets Manager - never plaintext
+        # Pull all 5 required secrets from Secrets Manager - never plaintext
         # environment variables for credentials.
         ecs_secrets = {
             env_var_name: ecs.Secret.from_secrets_manager(

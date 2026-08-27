@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import pytest
+
 from rag_pipeline.config import DEFAULT_MATCH_COUNT
 from rag_pipeline.search import SearchResult
 
+from rag_api import config as rag_api_config
+from rag_api.agent import graph as agent_graph
 from rag_api.query_parser import ParsedQuery
 from rag_api.schemas import SourceOut
 
@@ -213,3 +217,133 @@ def test_agent_query_returns_502_on_search_error(client, mocker):
     response = client.post("/query/agent", json={"question": "What did I spend?"})
 
     assert response.status_code == 502
+
+
+class TestCheckpointerBackendSelection:
+    """Unit tests for `_get_checkpointer`'s choice between the SQLite
+    fallback and the Postgres backend (see rag_api/agent/graph.py), without
+    touching a live Postgres instance - `ConnectionPool`/`PostgresSaver` are
+    patched at the point of use in `rag_api.agent.graph`.
+    """
+
+    def _make_settings(self, **overrides) -> rag_api_config.RagApiSettings:
+        defaults = dict(
+            openai_api_key="sk-test-key",
+            internal_api_key="test-internal-api-key",
+        )
+        defaults.update(overrides)
+        return rag_api_config.RagApiSettings(**defaults)
+
+    def test_no_db_url_uses_sqlite_saver(self, tmp_path):
+        """When AGENT_CHECKPOINT_DB_URL is unset, the graph still builds and
+        runs via the sqlite path - this is what keeps local dev/pytest
+        working with zero external dependencies."""
+        settings = self._make_settings(
+            agent_checkpoint_db_path=str(tmp_path / "checkpoints.sqlite")
+        )
+
+        checkpointer = agent_graph._get_checkpointer(settings)
+
+        assert isinstance(checkpointer, agent_graph.SqliteSaver)
+
+    def test_db_url_set_uses_postgres_saver(self, mocker):
+        """When AGENT_CHECKPOINT_DB_URL is set, a PostgresSaver backed by a
+        pooled connection is built instead of falling back to sqlite."""
+        mock_pool_instance = mocker.MagicMock()
+        mock_pool_cls = mocker.patch(
+            "rag_api.agent.graph.ConnectionPool", return_value=mock_pool_instance
+        )
+        mock_saver_instance = mocker.MagicMock()
+        mock_saver_cls = mocker.patch(
+            "rag_api.agent.graph.PostgresSaver", return_value=mock_saver_instance
+        )
+
+        settings = self._make_settings(
+            agent_checkpoint_db_url="postgresql://fake-user:fake-pass@fake-host:5432/fake-db"
+        )
+
+        checkpointer = agent_graph._get_checkpointer(settings)
+
+        assert checkpointer is mock_saver_instance
+        mock_pool_cls.assert_called_once()
+        _, pool_kwargs = mock_pool_cls.call_args
+        assert pool_kwargs["conninfo"] == settings.agent_checkpoint_db_url
+        assert pool_kwargs["max_size"] == 5
+        # autocommit + prepare_threshold=0 are required for compatibility
+        # with Supabase's Supavisor pooler - see graph.py.
+        assert pool_kwargs["kwargs"]["autocommit"] is True
+        assert pool_kwargs["kwargs"]["prepare_threshold"] == 0
+        mock_saver_cls.assert_called_once_with(mock_pool_instance)
+        mock_saver_instance.setup.assert_called_once()
+
+    def test_postgres_checkpointer_is_cached_across_calls(self, mocker):
+        """Repeated calls with the same db_url must reuse the same pool and
+        saver rather than opening a new pool per request."""
+        mocker.patch("rag_api.agent.graph.ConnectionPool")
+        mocker.patch("rag_api.agent.graph.PostgresSaver")
+
+        settings = self._make_settings(
+            agent_checkpoint_db_url="postgresql://fake-user:fake-pass@fake-host:5432/fake-db-cache-test"
+        )
+
+        first = agent_graph._get_checkpointer(settings)
+        second = agent_graph._get_checkpointer(settings)
+
+        assert first is second
+        agent_graph.ConnectionPool.assert_called_once()
+        agent_graph.PostgresSaver.assert_called_once()
+
+    def test_setup_runs_under_a_postgres_advisory_lock(self, mocker):
+        """`.setup()` must be sandwiched between pg_advisory_lock/unlock
+        calls on a connection checked out from the pool, so two processes
+        racing through first-time setup (e.g. an ECS rolling deploy running
+        old and new tasks concurrently) serialize instead of both mutating
+        the checkpoint_migrations table at once."""
+        mock_conn = mocker.MagicMock()
+        mock_pool_instance = mocker.MagicMock()
+        mock_pool_instance.connection.return_value.__enter__.return_value = mock_conn
+        mocker.patch(
+            "rag_api.agent.graph.ConnectionPool", return_value=mock_pool_instance
+        )
+        mock_saver_instance = mocker.MagicMock()
+        mocker.patch(
+            "rag_api.agent.graph.PostgresSaver", return_value=mock_saver_instance
+        )
+
+        settings = self._make_settings(
+            agent_checkpoint_db_url="postgresql://fake-user:fake-pass@fake-host:5432/fake-db-advisory-lock-test"
+        )
+
+        agent_graph._get_checkpointer(settings)
+
+        assert mock_conn.execute.call_args_list[0][0][0] == "SELECT pg_advisory_lock(%s)"
+        mock_saver_instance.setup.assert_called_once()
+        assert (
+            mock_conn.execute.call_args_list[-1][0][0]
+            == "SELECT pg_advisory_unlock(%s)"
+        )
+
+    def test_setup_failure_closes_the_pool_and_does_not_cache_it(self, mocker):
+        """If `.setup()` raises (e.g. a transient connectivity blip or
+        migration error), the pool must be closed rather than leaked, and
+        nothing must be cached - so a later call retries cleanly instead of
+        reusing a half-initialized, uncached-but-still-open pool."""
+        mock_pool_instance = mocker.MagicMock()
+        mocker.patch(
+            "rag_api.agent.graph.ConnectionPool", return_value=mock_pool_instance
+        )
+        mock_saver_instance = mocker.MagicMock()
+        mock_saver_instance.setup.side_effect = RuntimeError("setup failed")
+        mocker.patch(
+            "rag_api.agent.graph.PostgresSaver", return_value=mock_saver_instance
+        )
+
+        settings = self._make_settings(
+            agent_checkpoint_db_url="postgresql://fake-user:fake-pass@fake-host:5432/fake-db-setup-failure-test"
+        )
+
+        with pytest.raises(RuntimeError, match="setup failed"):
+            agent_graph._get_checkpointer(settings)
+
+        mock_pool_instance.close.assert_called_once()
+        assert settings.agent_checkpoint_db_url not in agent_graph._postgres_checkpointers
