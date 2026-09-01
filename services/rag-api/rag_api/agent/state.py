@@ -9,6 +9,7 @@ from rag_pipeline.search import SearchResult
 from rag_api.schemas import SourceOut
 
 MAX_RETRIEVE_ATTEMPTS = 2
+MAX_CRITIQUE_ATTEMPTS = 1
 
 
 class AgentState(TypedDict, total=False):
@@ -30,6 +31,16 @@ class AgentState(TypedDict, total=False):
     # set by generate_node (or the out-of-scope short-circuit)
     answer: str
     sources: list[SourceOut]
+
+    # set/updated by critique_node after generate_node produces an answer
+    critique_attempt: int
+    critique_feedback: str | None
+    # Explicit "was this verdict ungrounded" signal, always set by
+    # critique_node (True on grounded/fail-open, False on ungrounded).
+    # route_after_critique must gate on this, not on critique_feedback's
+    # string truthiness - the judge can legally return issues="" alongside
+    # grounded=false, and an empty string is falsy.
+    grounded: bool
 
     # Multi-turn conversation history, persisted across calls to the graph
     # by the checkpointer keyed on thread_id (see graph.py). Each entry is
