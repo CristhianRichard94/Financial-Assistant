@@ -11,6 +11,7 @@ from rag_api import openai_client, query_parser
 from rag_api.agent.state import (
     MAX_CRITIQUE_ATTEMPTS,
     MAX_RETRIEVE_ATTEMPTS,
+    MIN_RELEVANCE_SIMILARITY,
     AgentState,
 )
 from rag_api.config import RagApiSettings
@@ -49,6 +50,24 @@ def retrieve_node(state: AgentState, settings: RagApiSettings) -> dict:
         document_type=state.get("document_type"),
     )
     return {"results": results, "attempt": state.get("attempt", 0) + 1}
+
+
+def grade_node(state: AgentState) -> dict:
+    """Corrective retrieval grading: filter `results` down to chunks whose
+    similarity score (already computed by rag_pipeline's hybrid+RRF search,
+    see SearchResult.similarity) clears MIN_RELEVANCE_SIMILARITY.
+
+    Deliberately a pure threshold check, not another OpenAI call - grading
+    every retrieval with an LLM would double request latency/cost on every
+    query, whereas this is free and deterministic. route_after_retrieve
+    then decides generate vs refine based on this filtered list, so a
+    retrieval that returned only noise (technically non-empty, but nothing
+    above the relevance bar) is treated the same as an empty retrieval.
+    """
+    results = state.get("results") or []
+    return {
+        "results": [r for r in results if r.similarity >= MIN_RELEVANCE_SIMILARITY]
+    }
 
 
 def refine_node(state: AgentState) -> dict:
@@ -137,6 +156,11 @@ def route_after_parse(state: AgentState) -> str:
 
 
 def route_after_retrieve(state: AgentState) -> str:
+    """Runs after grade_node, so `results` here is already filtered down to
+    chunks that cleared MIN_RELEVANCE_SIMILARITY - an empty list means
+    either nothing was retrieved or nothing retrieved was relevant, and
+    both are treated the same way: retry via refine while attempts remain,
+    otherwise give up and let generate_node say "not found"."""
     if state.get("results"):
         return "generate"
     if state.get("attempt", 0) < MAX_RETRIEVE_ATTEMPTS:

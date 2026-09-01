@@ -2,9 +2,9 @@
 
     parse ---out_of_scope---> END (canned answer)
       |
-      +---retrieve---> [empty?]--refine--> retrieve (loop, capped)
+      +---retrieve---> grade ---[no relevant results?]--refine--> retrieve (loop, capped)
                           |
-                          +--has results / attempts exhausted--> generate
+                          +--has relevant results / attempts exhausted--> generate
                                                                     |
                                                                     v
                                                                  critique
@@ -189,6 +189,7 @@ def build_agent_graph(settings: RagApiSettings):
     graph.add_node("parse", partial(nodes.parse_node, settings=settings))
     graph.add_node("out_of_scope", nodes.out_of_scope_node)
     graph.add_node("retrieve", partial(nodes.retrieve_node, settings=settings))
+    graph.add_node("grade", nodes.grade_node)
     graph.add_node("refine", nodes.refine_node)
     graph.add_node("generate", partial(nodes.generate_node, settings=settings))
     graph.add_node("critique", partial(nodes.critique_node, settings=settings))
@@ -200,8 +201,9 @@ def build_agent_graph(settings: RagApiSettings):
         nodes.route_after_parse,
         {"out_of_scope": "out_of_scope", "retrieve": "retrieve"},
     )
+    graph.add_edge("retrieve", "grade")
     graph.add_conditional_edges(
-        "retrieve",
+        "grade",
         nodes.route_after_retrieve,
         {"refine": "refine", "generate": "generate"},
     )

@@ -11,6 +11,19 @@ from rag_api.schemas import SourceOut
 MAX_RETRIEVE_ATTEMPTS = 2
 MAX_CRITIQUE_ATTEMPTS = 1
 
+# Minimum SearchResult.similarity (see rag_pipeline/search.py) for a
+# retrieved chunk to be treated as relevant by grade_node. Chosen as a
+# cheap, deterministic threshold rather than an LLM-graded check: grading
+# every retrieval with another OpenAI call would double request latency/
+# cost on every single query, whereas a similarity cutoff is free. 0.3 is
+# a permissive floor - low enough not to discard genuinely relevant but
+# imperfectly-worded matches, but high enough to catch the near-zero-
+# similarity noise that hybrid search + RRF (see rag_pipeline/search.py)
+# can still surface as technically non-empty results. rag_pipeline itself
+# has no existing similarity-threshold constant to align with (only
+# DEFAULT_MATCH_COUNT, a result-count cap, not a relevance cutoff).
+MIN_RELEVANCE_SIMILARITY = 0.3
+
 
 class AgentState(TypedDict, total=False):
     # input
