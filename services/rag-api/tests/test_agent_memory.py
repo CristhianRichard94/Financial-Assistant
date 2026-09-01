@@ -9,6 +9,7 @@ from rag_pipeline.search import SearchResult
 
 from rag_api import config as rag_api_config
 from rag_api.agent import graph as agent_graph
+from rag_api.openai_client import GroundednessResult
 from rag_api.query_parser import ParsedQuery
 from rag_api.schemas import SourceOut
 
@@ -217,6 +218,112 @@ def test_agent_query_returns_502_on_search_error(client, mocker):
     response = client.post("/query/agent", json={"question": "What did I spend?"})
 
     assert response.status_code == 502
+
+
+class TestGroundednessCritiqueLoop:
+    """End-to-end tests for the critique loop wired into the /query/agent
+    graph (parse -> retrieve -> generate -> critique -> ...). See
+    rag_api/agent/nodes.py and rag_api/agent/graph.py.
+    """
+
+    def test_grounded_first_try_returns_answer_unchanged(self, client, mocker):
+        mocker.patch(
+            "rag_api.query_parser.parse_query", return_value=_make_parsed_query()
+        )
+        mocker.patch("rag_pipeline.search", return_value=[_make_result()])
+        mocker.patch(
+            "rag_api.openai_client.ask_openai",
+            return_value=("A fully grounded answer.", []),
+        )
+        check_groundedness = mocker.patch(
+            "rag_api.openai_client.check_groundedness",
+            return_value=GroundednessResult(grounded=True, issues=""),
+        )
+
+        response = client.post(
+            "/query/agent", json={"question": "How much did I spend?"}
+        )
+
+        assert response.status_code == 200
+        assert response.json()["answer"] == "A fully grounded answer."
+        check_groundedness.assert_called_once()
+
+    def test_ungrounded_then_grounded_regenerates_once_with_feedback(
+        self, client, mocker
+    ):
+        mocker.patch(
+            "rag_api.query_parser.parse_query", return_value=_make_parsed_query()
+        )
+        mocker.patch("rag_pipeline.search", return_value=[_make_result()])
+        ask_openai = mocker.patch(
+            "rag_api.openai_client.ask_openai",
+            side_effect=[
+                ("An answer with an unsupported claim.", []),
+                ("A corrected, grounded answer.", []),
+            ],
+        )
+        mocker.patch(
+            "rag_api.openai_client.check_groundedness",
+            side_effect=[
+                GroundednessResult(grounded=False, issues="Unsupported figure."),
+                GroundednessResult(grounded=True, issues=""),
+            ],
+        )
+
+        response = client.post(
+            "/query/agent", json={"question": "How much did I spend?"}
+        )
+
+        assert response.status_code == 200
+        assert response.json()["answer"] == "A corrected, grounded answer."
+        assert ask_openai.call_count == 2
+        _, second_call_kwargs = ask_openai.call_args_list[1]
+        assert second_call_kwargs["critique_feedback"] == "Unsupported figure."
+
+    def test_exhausted_retries_still_returns_an_answer_with_caveat(
+        self, client, mocker
+    ):
+        mocker.patch(
+            "rag_api.query_parser.parse_query", return_value=_make_parsed_query()
+        )
+        mocker.patch("rag_pipeline.search", return_value=[_make_result()])
+        mocker.patch(
+            "rag_api.openai_client.ask_openai",
+            side_effect=[
+                ("First attempt, ungrounded.", []),
+                ("Second attempt, still ungrounded.", []),
+            ],
+        )
+        mocker.patch(
+            "rag_api.openai_client.check_groundedness",
+            side_effect=[
+                GroundednessResult(grounded=False, issues="Issue one."),
+                GroundednessResult(grounded=False, issues="Issue two."),
+            ],
+        )
+
+        response = client.post(
+            "/query/agent", json={"question": "How much did I spend?"}
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["answer"].startswith("Second attempt, still ungrounded.")
+        assert "could not be fully verified" in body["answer"]
+
+    def test_out_of_scope_never_calls_groundedness_check(self, client, mocker):
+        mocker.patch(
+            "rag_api.query_parser.parse_query",
+            return_value=_make_parsed_query(intent="out_of_scope"),
+        )
+        check_groundedness = mocker.patch("rag_api.openai_client.check_groundedness")
+
+        response = client.post(
+            "/query/agent", json={"question": "What's the weather?"}
+        )
+
+        assert response.status_code == 200
+        check_groundedness.assert_not_called()
 
 
 class TestCheckpointerBackendSelection:

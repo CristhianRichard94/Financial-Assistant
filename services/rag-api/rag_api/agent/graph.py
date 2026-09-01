@@ -4,7 +4,17 @@
       |
       +---retrieve---> [empty?]--refine--> retrieve (loop, capped)
                           |
-                          +--has results / attempts exhausted--> generate --> END
+                          +--has results / attempts exhausted--> generate
+                                                                    |
+                                                                    v
+                                                                 critique
+                                                                    |
+                                        +---ungrounded, attempts left---+
+                                        |                               |
+                                        v                               v
+                                    generate (regenerate,           END (grounded, or
+                                    with feedback)                  attempts exhausted -
+                                                                     caveat appended)
 
 Settings aren't part of AgentState - bound into each node via
 functools.partial at build time, so state stays pure/serializable data.
@@ -181,6 +191,7 @@ def build_agent_graph(settings: RagApiSettings):
     graph.add_node("retrieve", partial(nodes.retrieve_node, settings=settings))
     graph.add_node("refine", nodes.refine_node)
     graph.add_node("generate", partial(nodes.generate_node, settings=settings))
+    graph.add_node("critique", partial(nodes.critique_node, settings=settings))
 
     graph.set_entry_point("parse")
 
@@ -196,7 +207,12 @@ def build_agent_graph(settings: RagApiSettings):
     )
     graph.add_edge("refine", "retrieve")
     graph.add_edge("out_of_scope", END)
-    graph.add_edge("generate", END)
+    graph.add_edge("generate", "critique")
+    graph.add_conditional_edges(
+        "critique",
+        nodes.route_after_critique,
+        {"generate": "generate", "end": END},
+    )
 
     checkpointer = _get_checkpointer(settings)
     return graph.compile(checkpointer=checkpointer)

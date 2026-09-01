@@ -1,3 +1,4 @@
-"""LangGraph-based agentic query flow: parse -> retrieve -> grade -> (refine
-loop | generate). See graph.py for the node/edge wiring.
+"""LangGraph-based agentic query flow: parse -> retrieve -> [refine loop] ->
+generate -> critique -> (regenerate once | END). See graph.py for the
+node/edge wiring.
 """
