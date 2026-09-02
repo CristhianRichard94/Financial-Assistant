@@ -14,7 +14,7 @@ export function getSupabaseUrl(): string {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!url) {
     throw new Error(
-      "NEXT_PUBLIC_SUPABASE_URL is not set. Copy artifacts/finsight/.env.example to " +
+      "NEXT_PUBLIC_SUPABASE_URL is not set. Copy apps/finsight/.env.example to " +
         ".env.local and set it to your Supabase project's URL."
     );
   }
@@ -25,7 +25,7 @@ export function getSupabaseAnonKey(): string {
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!key) {
     throw new Error(
-      "NEXT_PUBLIC_SUPABASE_ANON_KEY is not set. Copy artifacts/finsight/.env.example to " +
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY is not set. Copy apps/finsight/.env.example to " +
         ".env.local and set it to your Supabase project's anon/public key."
     );
   }

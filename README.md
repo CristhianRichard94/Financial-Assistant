@@ -29,7 +29,7 @@ independent Python RAG backend.
 flowchart TB
     User(["User"])
 
-    subgraph Vercel["Vercel — Next.js 15 (artifacts/finsight)"]
+    subgraph Vercel["Vercel — Next.js 15 (apps/finsight)"]
         direction TB
         Pages["App Router pages\n/dashboard  /documents  /chat\n(protected route group)"]
         API["API Route Handlers\nsrc/app/api/**"]
@@ -91,7 +91,7 @@ Uses `@supabase/ssr` and `@supabase/supabase-js` for session handling on both se
 
 ```
 .
-├── artifacts/
+├── apps/
 │   └── finsight/           Next.js 15 frontend + API routes (the app itself)
 ├── lib/
 │   ├── db/                 Drizzle schema/client (@workspace/db)
@@ -131,7 +131,7 @@ cp .env.example .env   # fill in SUPABASE_URL, SUPABASE_SERVICE_KEY, OPENAI_API_
 uvicorn rag_api.main:app --reload --port 8000
 
 # 3. Point the frontend at it
-cd ../../artifacts/finsight
+cd ../../apps/finsight
 cp .env.example .env.local   # RAG_API_BASE_URL + RAG_API_INTERNAL_KEY (must match rag-api's INTERNAL_API_KEY)
 
 # 4. Run the frontend
@@ -142,7 +142,7 @@ pnpm --filter @workspace/finsight run dev
 
 | App | File | Key variables |
 | --- | --- | --- |
-| `artifacts/finsight` | `.env.local` (gitignored, copy from `.env.example`) | `RAG_API_BASE_URL`, `RAG_API_INTERNAL_KEY` |
+| `apps/finsight` | `.env.local` (gitignored, copy from `.env.example`) | `RAG_API_BASE_URL`, `RAG_API_INTERNAL_KEY` |
 | `services/rag-api` | `.env` (gitignored, copy from `.env.example`) | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `OPENAI_API_KEY`, `INTERNAL_API_KEY`, `AGENT_CHECKPOINT_DB_URL` (optional for local dev, falls back to SQLite; required before deploying via the CDK stack in `services/rag-api/infra/`) |
 | `services/rag-pipeline` | `.env` (gitignored, copy from `.env.example`) | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `OPENAI_API_KEY` |
 

@@ -6,7 +6,7 @@ import { safeRedirect } from "@/lib/safeRedirect";
  * OAuth callback landing page for Google sign-in via Supabase Auth.
  *
  * Google redirects the browser here (via Supabase's own `/auth/v1/callback`
- * first - see artifacts/finsight/README.md for the required Supabase/Google
+ * first - see apps/finsight/README.md for the required Supabase/Google
  * Cloud Console configuration) with either a `code` to exchange for a
  * session, or an `error` describing why sign-in didn't happen.
  */

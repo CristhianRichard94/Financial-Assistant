@@ -1,6 +1,6 @@
 ---
 name: pnpm-workspace
-description: Use when working on the Node/TypeScript side of FinSight (artifacts/finsight, scripts) - covers workspace layout and run/build/typecheck commands.
+description: Use when working on the Node/TypeScript side of FinSight (apps/finsight, scripts) - covers workspace layout and run/build/typecheck commands.
 ---
 
 # pnpm workspace — FinSight
@@ -10,7 +10,7 @@ services under `services/`.
 
 ## Layout
 
-- `artifacts/finsight/` — Next.js 15 App Router frontend, also owns all
+- `apps/finsight/` — Next.js 15 App Router frontend, also owns all
   `/api/*` routes via Next.js Route Handlers (`src/app/api/**`) (port 23970)
 - `scripts/` — misc TypeScript scripts, its own `package.json`
 - Root `package.json` — workspace scripts only, no app code
@@ -28,7 +28,7 @@ on any other package manager.
 
 ## State management
 
-- `artifacts/finsight/src/lib/store.ts` — in-memory mock store for dashboard
+- `apps/finsight/src/lib/store.ts` — in-memory mock store for dashboard
   data only (still mocked; out of scope for the RAG feature)
 - Real document data flows through the Python `rag-api` service, not the
   in-memory store — see the `rag-api` skill.

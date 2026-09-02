@@ -9,9 +9,9 @@ reconstructing them at the end.
 ## Actual Stack
 
 - pnpm workspace, Node.js, TypeScript
-- **Frontend**: Next.js 15 (App Router) — `artifacts/finsight/`
-- **API**: Next.js Route Handlers — `artifacts/finsight/src/app/api/**`, own all `/api/*` routes; no separate Express server (the previously-mirrored `artifacts/api-server/` was dropped, see the 2026-07-09 log entry below)
-- **Data**: no mock store left — dashboard/documents/chat all read from `services/rag-api`; chat messages are additionally persisted in Supabase (`chat_messages`, RLS-scoped). `artifacts/finsight/src/lib/store.ts` (renamed from `finSightStore.ts`) now only supplies `Document`/`ChatMessage` types; a Drizzle + Postgres package (`lib/db/`) exists but isn't wired up yet
+- **Frontend**: Next.js 15 (App Router) — `apps/finsight/`
+- **API**: Next.js Route Handlers — `apps/finsight/src/app/api/**`, own all `/api/*` routes; no separate Express server (the previously-mirrored `apps/api-server/` was dropped, see the 2026-07-09 log entry below)
+- **Data**: no mock store left — dashboard/documents/chat all read from `services/rag-api`; chat messages are additionally persisted in Supabase (`chat_messages`, RLS-scoped). `apps/finsight/src/lib/store.ts` (renamed from `finSightStore.ts`) now only supplies `Document`/`ChatMessage` types; a Drizzle + Postgres package (`lib/db/`) exists but isn't wired up yet
 - **RAG backend**: `services/rag-pipeline/` (Supabase/pgvector ingestion + similarity search + dashboard aggregation, merged `f552192`) and `services/rag-api/` (FastAPI HTTP service wrapping it: `POST /upload`, `POST /query`, `POST /query/agent`, `GET /documents`, `DELETE /documents/{id}`, `GET /dashboard/summary`, `GET /dashboard/activity`) — documents, chat, and dashboard all proxy through to this real backend via server-side Next.js routes; no mock store remains. AWS deploy artifacts (ECS Fargate + CDK) exist but were never applied — no AWS credentials in this environment.
 
 ## Agents & Tools Used
@@ -180,7 +180,7 @@ prompt-injection-safe filename escaping, `status_mapping.py`); small additive ch
 `services/rag-api/infra/` — **ECS Fargate + CDK chosen over Lambda** because `/upload`
 ingestion runs in a `BackgroundTasks` callback after the response returns, which needs a
 long-lived process (Lambda freezes execution right after the response). Frontend wiring:
-new `ragApiClient.ts` in both `artifacts/finsight` and `artifacts/api-server` (mirrored
+new `ragApiClient.ts` in both `apps/finsight` and `apps/api-server` (mirrored
 because it was unclear which of Next.js Route Handlers vs. the Express proxy is actually
 live in the deployed environment — see the `pnpm-workspace` skill's routing gotcha).
 **Not deployed** — no AWS CLI/credentials in this sandbox; user chose "build deployable
@@ -201,7 +201,7 @@ Anthropic clients, 60 tests total across both Python packages) and `cdk synth`
 - **Round 2:** both ship on the Python service; but reviewing the frontend wiring
   surfaced the same buffering-DoS pattern one layer up — `req.formData()` in the
   Next.js/Express upload proxy also fully buffers before checking size.
-- **Round 3:** fixed via `artifacts/finsight/src/lib/boundedRequestBody.ts` — a
+- **Round 3:** fixed via `apps/finsight/src/lib/boundedRequestBody.ts` — a
   byte-counting `ReadableStream` wrapper that errors as soon as the cumulative bytes
   read exceed the limit, so the full body is never assembled in memory for an
   oversized request. `security-engineer` shipped it; `qa-engineer` found the fix's
@@ -246,7 +246,7 @@ the round-4 upload-size DoS fix (clean 400 + server survives an 11MB upload), an
 graceful-degradation behavior when Supabase/Anthropic calls fail (clean error JSON,
 chat even falls back to a friendly "couldn't process that" reply instead of erroring
 the whole request). This testing surfaced a real bug: the mirrored Express route
-(`artifacts/api-server/src/routes/finsight.ts`) had no error-handling middleware, so
+(`apps/api-server/src/routes/finsight.ts`) had no error-handling middleware, so
 Multer's file-too-large error fell through to Express's default handler and leaked a
 raw HTML stack trace (with internal `node_modules` file paths) with HTTP 500, instead
 of the clean 400 JSON its Next.js counterpart returns for the same input.
@@ -354,20 +354,20 @@ Merged to `main` (`5190eda`, feature commit `827cf38`); worktree and
 ### 2026-07-09 — Drop mirrored Express api-server (git worktree: feature/drop-api-server)
 **Tool:** Claude Code
 **Prompt:**
-> Remove the standalone Express `artifacts/api-server` package and consolidate all
-> `/api/*` handling into the existing Next.js Route Handlers in `artifacts/finsight`.
+> Remove the standalone Express `apps/api-server` package and consolidate all
+> `/api/*` handling into the existing Next.js Route Handlers in `apps/finsight`.
 
 **Output summary:** Backend-only change, so skipped straight to `software-engineer` per
-`CLAUDE.md`'s conditional design step. Deleted all 14 files under `artifacts/api-server/`
+`CLAUDE.md`'s conditional design step. Deleted all 14 files under `apps/api-server/`
 (the whole Express service: `app.ts`, `index.ts`, `finSightStore.ts`, `logger.ts`,
 `ragApiClient.ts`, the `routes/` directory, build/deploy config). Ported the one route
 that only existed on the Express side — the health check — to
-`artifacts/finsight/src/app/api/healthz/route.ts` (plus `route.test.ts`), reusing the
+`apps/finsight/src/app/api/healthz/route.ts` (plus `route.test.ts`), reusing the
 generated `HealthCheckResponse` schema from `@workspace/api-zod` instead of hand-rolling
 a new response shape. Updated `README.md`, `replit.md`, and the `pnpm-workspace`
 `.claude/skills/` doc to remove the dual-routing gotcha (Next.js vs. Express mirroring)
 that no longer applies now that there's a single API implementation. Removed
-`artifacts/api-server`'s workspace entry from `artifacts/finsight/package.json`/
+`apps/api-server`'s workspace entry from `apps/finsight/package.json`/
 `pnpm-lock.yaml` and reinstalled to regenerate the lockfile without the dropped package.
 **Manual changes after:** none — this closes out the mirroring risk that caused the
 Multer-error-leak bug (2026-07-06 entry above) and the stale `LIMIT_UNEXPECTED_FILE`

@@ -1,4 +1,4 @@
--- Chat history for the FinSight Next.js app (artifacts/finsight). This is
+-- Chat history for the FinSight Next.js app (apps/finsight). This is
 -- the only table in this migration folder that rag-pipeline/rag-api never
 -- touch - Next.js is the sole reader/writer, via the user's own
 -- session (anon key + cookies), never a service-role key. It lives here

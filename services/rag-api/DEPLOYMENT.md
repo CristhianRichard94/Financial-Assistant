@@ -157,7 +157,7 @@ this stack is deployed in. This is not required to use the API.)
 
 Set these in the frontend's server-side environment (e.g. your frontend
 host's environment variables, such as Vercel project env vars, or
-`artifacts/finsight/.env.local` for local testing):
+`apps/finsight/.env.local` for local testing):
 
 ```
 RAG_API_BASE_URL=https://d1234abcdefgh.cloudfront.net
@@ -167,7 +167,7 @@ RAG_API_INTERNAL_KEY=<the same value you generated for INTERNAL_API_KEY in step 
 Use the `DistributionDomainName` value from step 6, not the raw ALB DNS name.
 
 The Next.js app's API routes proxy to this URL server-side (see
-`artifacts/finsight/src/lib/ragApiClient.ts`), attaching `RAG_API_INTERNAL_KEY`
+`apps/finsight/src/lib/ragApiClient.ts`), attaching `RAG_API_INTERNAL_KEY`
 as the `X-Internal-Api-Key` header on every request - the browser never talks
 to the ALB or CloudFront distribution directly, so no CORS configuration is
 needed on this service, and `RAG_API_INTERNAL_KEY` never needs to exist in

@@ -45,7 +45,7 @@ docstring) and threads it through every `rag_pipeline` call to scope reads/
 writes to that user. It's not itself an env var; the trusted Next.js caller
 sends it per-request based on the caller's already-verified session.
 
-Point the frontend at it via `artifacts/finsight/.env.local`:
+Point the frontend at it via `apps/finsight/.env.local`:
 `RAG_API_BASE_URL=http://localhost:8000`, `RAG_API_INTERNAL_KEY=<same value>`.
 
 ## Tests

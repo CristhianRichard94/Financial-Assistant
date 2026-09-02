@@ -55,7 +55,7 @@ __pycache__/
 .env
 .env.local
 .env.*.local
-artifacts/finsight/.next
+apps/finsight/.next
 .venv
 .vercel
 .env*

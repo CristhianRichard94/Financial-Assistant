@@ -40,7 +40,7 @@ function getBaseUrl(): string {
   const baseUrl = process.env.RAG_API_BASE_URL;
   if (!baseUrl) {
     throw new Error(
-      "RAG_API_BASE_URL is not set. Copy artifacts/finsight/.env.example to " +
+      "RAG_API_BASE_URL is not set. Copy apps/finsight/.env.example to " +
         ".env.local and set it to the rag-api service's URL (e.g. http://localhost:8000)."
     );
   }
@@ -72,7 +72,7 @@ function getInternalApiKey(): string {
   const key = process.env.RAG_API_INTERNAL_KEY;
   if (!key) {
     throw new Error(
-      "RAG_API_INTERNAL_KEY is not set. Copy artifacts/finsight/.env.example to " +
+      "RAG_API_INTERNAL_KEY is not set. Copy apps/finsight/.env.example to " +
         ".env.local and set it to the same value configured as rag-api's INTERNAL_API_KEY."
     );
   }

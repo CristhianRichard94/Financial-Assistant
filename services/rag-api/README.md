@@ -6,9 +6,9 @@ library over HTTP: document upload/listing/deletion, a `/query` (and agent-based
 synthesize an answer from them, and `/dashboard/*` endpoints that aggregate a
 user's stored transactions for the frontend's overview dashboard.
 
-This is the backend the FinSight frontend (`artifacts/finsight`) talks to via
+This is the backend the FinSight frontend (`apps/finsight`) talks to via
 its own Next.js API routes, which proxy requests here server-to-server (see
-`artifacts/finsight/src/lib/ragApiClient.ts`). This service has no
+`apps/finsight/src/lib/ragApiClient.ts`). This service has no
 per-user auth and no CORS configuration, since it's never called directly
 from a browser. Its ALB is public (fronted by a CloudFront distribution,
 see `infra/rag_api_stack.py` and `DEPLOYMENT.md`), so the primary access
@@ -67,7 +67,7 @@ The service is now available at `http://localhost:8000` (interactive docs at
 
 ### 4. Point the frontend at it
 
-In `artifacts/finsight/.env.local`:
+In `apps/finsight/.env.local`:
 
 ```
 RAG_API_BASE_URL=http://localhost:8000

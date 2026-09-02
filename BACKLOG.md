@@ -7,7 +7,7 @@ Status legend: ✅ Done · 🟡 Partial / in progress · ⬜ Not started · ➖ 
 
 ## Frontend
 
-- [x] ✅ Set up a Next.js + TypeScript project on Replit — scaffolded by Replit Agent (`artifacts/finsight/`), Next.js 15 App Router
+- [x] ✅ Set up a Next.js + TypeScript project on Replit — scaffolded by Replit Agent (`apps/finsight/`), Next.js 15 App Router
 - [x] ➖ Watch the Replit + Next.js walkthrough — not a code deliverable, assumed done by the user
 - [x] ✅ Build a file upload component (accept PDF, CSV, images) — drag-and-drop + browse button in `DocumentsView.tsx` (`react-dropzone`), accepts `.pdf/.csv/.jpg/.jpeg/.png`
 - [x] ✅ Build a chat interface where users type financial questions — `/chat`, full-height layout, bubbles, typing indicator, auto-scroll
@@ -59,10 +59,10 @@ Not verifiable in this sandbox: live ingestion/embedding/Claude calls (no real A
 
 ## Verified locally (2026-07-06)
 
-All three services run locally with placeholder Supabase/OpenAI/Anthropic credentials (`services/rag-api/.env`, `artifacts/finsight/.env.local` — both gitignored). Confirmed: pages load, internal-API-key auth guard works, the upload-size DoS fix holds (clean 400, server survives an 11MB upload), and Supabase/Anthropic call failures degrade gracefully (clean error JSON, chat falls back to a friendly reply) instead of crashing.
+All three services run locally with placeholder Supabase/OpenAI/Anthropic credentials (`services/rag-api/.env`, `apps/finsight/.env.local` — both gitignored). Confirmed: pages load, internal-API-key auth guard works, the upload-size DoS fix holds (clean 400, server survives an 11MB upload), and Supabase/Anthropic call failures degrade gracefully (clean error JSON, chat falls back to a friendly reply) instead of crashing.
 
 This testing surfaced and fixed two bugs:
-1. `artifacts/api-server`'s mirrored upload route leaked a raw stack trace (500) on oversized files instead of a clean 400. Fixed, reviewed (ship/ship), merged `c7b6549` (`fix/multer-error-leak`, worktree/branch removed).
+1. `apps/api-server`'s mirrored upload route leaked a raw stack trace (500) on oversized files instead of a clean 400. Fixed, reviewed (ship/ship), merged `c7b6549` (`fix/multer-error-leak`, worktree/branch removed).
 2. Every frontend data-fetching hook (`DocumentsView`, `ChatView`, `DashboardView`) parsed `fetch()` responses as JSON without checking `res.ok`, so a real backend error crashed the Documents page (`data.some is not a function` in `refetchInterval`) instead of showing an error state. Fixed all 5 call sites + added error-state UI to `DocumentsView`/`ChatView`. Reviewed (ship/ship — both reviewers noted no browser tooling was available in this sandbox to reproduce the crash directly; verified by code inspection + typecheck instead), merged `48bf1ce` (`fix/query-error-handling`, worktree/branch removed).
 
 ## Beyond the original checklist
@@ -87,7 +87,7 @@ assignment checklist this file otherwise tracks:
 - **Spanish/English i18n** (`e5258bd`) — `next-intl`, Spanish default.
 - **DeepEval-based RAG evaluation suite** (`743876b`) — `services/rag-eval/`, runs
   against real `rag-pipeline`/`rag-api` code (no mocks), excluded from default CI.
-- **Removed the Replit-era Express `artifacts/api-server`** (`e8bbbb8`) — the
+- **Removed the Replit-era Express `apps/api-server`** (`e8bbbb8`) — the
   earlier "Next.js (and mirrored Express) route handlers" duplication mentioned
   elsewhere in this file no longer exists; Next.js Route Handlers are the only API
   layer now.
@@ -95,7 +95,7 @@ assignment checklist this file otherwise tracks:
 ## Currently in flight
 
 Nothing blocking. Remaining optional follow-ups (all non-blocking, flagged by reviewers as out of scope for this pass):
-- `artifacts/finsight/src/app/api/chat/messages/route.ts` has the same unbounded-`req.json()`-buffering pattern as the fixed upload route, but it pre-dates this feature — not a regression, tracked as a future ticket.
+- `apps/finsight/src/app/api/chat/messages/route.ts` has the same unbounded-`req.json()`-buffering pattern as the fixed upload route, but it pre-dates this feature — not a regression, tracked as a future ticket.
 - `ChatView`'s secondary `useDocuments()` query (used only for `hasDocuments`) has no dedicated error-state UI — a backend outage silently renders as "no documents" rather than an error; flagged by QA as non-blocking.
 - No browser/Playwright automation available in this sandbox — the query-error-handling fix was verified by code inspection, typecheck, and curl rather than an actual browser repro. Worth confirming visually in a real browser when possible.
 - Live AWS deployment and live end-to-end credential testing are the user's to run whenever ready.

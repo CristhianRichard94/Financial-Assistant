@@ -11,7 +11,7 @@ from rag_pipeline import DocumentRecord
 from rag_api.schemas import DocumentOut, DocumentStatusOut, DocumentTypeOut
 
 # rag_pipeline's `documents.status` values -> the frontend's `Document["status"]`
-# values (see artifacts/finsight/src/lib/store.ts). The pipeline's "completed"
+# values (see apps/finsight/src/lib/store.ts). The pipeline's "completed"
 # maps to the frontend's "processed", and "failed" maps to "error"; the rest
 # are shared verbatim.
 STATUS_MAP: dict[str, DocumentStatusOut] = {

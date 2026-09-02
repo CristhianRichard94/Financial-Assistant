@@ -13,12 +13,12 @@ AI-powered personal finance assistant that analyzes uploaded documents (PDFs, CS
 - **Frontend**: Next.js 15 App Router, Tailwind CSS v4, TanStack Query, sonner, react-dropzone
 - **API**: Next.js Route Handlers (`src/app/api/**`, handles all `/api/*` routes)
 - **State**: no mock data remains — dashboard/documents/chat all read from `services/rag-api`; chat messages are additionally persisted in Supabase (`chat_messages`, RLS-scoped)
-- **i18n**: `next-intl`, Spanish default / English available (`artifacts/finsight/i18n/`)
+- **i18n**: `next-intl`, Spanish default / English available (`apps/finsight/i18n/`)
 - Build: Next.js (frontend + API)
 
 ## Where things live
 
-- `artifacts/finsight/` — Next.js 15 App Router frontend + API
+- `apps/finsight/` — Next.js 15 App Router frontend + API
   - `src/app/` — pages: `/dashboard`, `/documents`, `/chat`
   - `src/app/api/` — Route Handlers: `/api/documents`, `/api/chat/messages`, `/api/dashboard/*`, `/api/healthz`
   - `src/components/AppLayout.tsx` — shared sidebar nav (client component)
