@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from rag_pipeline import dashboard_cache
+from rag_pipeline import dashboard_cache, redis_support
 from rag_pipeline.config import Settings
 
 
@@ -158,16 +158,25 @@ class FakeSupabaseClient:
 
 
 @pytest.fixture(autouse=True)
-def _reset_dashboard_cache():
+def _reset_dashboard_cache(monkeypatch):
     """The dashboard TTL cache (rag_pipeline.dashboard_cache) is process-
     global module state. Several test modules reuse the same `USER_ID`
     across many cases within the same test run (well within the cache's TTL
     window), so without resetting it between tests a case could see a
     stale cached value left over from an earlier, unrelated test.
+
+    Also clears any REDIS_URL left in the developer's shell/.env (same
+    reasoning as rag-api's `rag_api_settings_env` fixture clearing
+    AGENT_CHECKPOINT_DB_URL/REDIS_URL) and resets redis_support's cached
+    client, so these tests always exercise the in-process fallback unless a
+    test explicitly opts into the Redis path.
     """
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    redis_support.reset_for_tests()
     dashboard_cache.reset_for_tests()
     yield
     dashboard_cache.reset_for_tests()
+    redis_support.reset_for_tests()
 
 
 @pytest.fixture

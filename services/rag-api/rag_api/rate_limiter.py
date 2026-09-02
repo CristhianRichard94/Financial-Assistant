@@ -11,12 +11,15 @@ already-verified `user_id` from `rag_api.auth.require_user_id` - see that
 module's docstring for why this id can be trusted here without rag-api
 re-verifying it itself.
 
-Deliberately a small hand-rolled per-key sliding-window log (a dict keyed by
-`user_id` storing a `collections.deque` of `time.monotonic()` timestamps)
-rather than pulling in a rate-limiting library (e.g. `slowapi`/`limits`) or
-an external store (Redis) - a limiter this small doesn't warrant a new
-dependency, following the same "small hand-rolled dict, no new dependency"
-precedent as `rag_pipeline.dashboard_cache`.
+Originally (and still, by default) a small hand-rolled per-key
+sliding-window log (a dict keyed by `user_id` storing a `collections.deque`
+of `time.monotonic()` timestamps) rather than pulling in a rate-limiting
+library (e.g. `slowapi`/`limits`) or an external store (Redis) - a limiter
+this small doesn't warrant a new dependency by itself, following the same
+"small hand-rolled dict, no new dependency" precedent as
+`rag_pipeline.dashboard_cache`. That in-process log is still exactly what's
+used when no shared store is configured (local dev, and every existing
+test in this suite).
 
 Sliding window log, not a fixed window counter: a fixed window (e.g. "the
 count resets at the top of each minute") lets a client send up to roughly
@@ -37,23 +40,40 @@ threadpool, so concurrent requests for the same user can race on the same
 deque; each limiter's dict is guarded by a `threading.Lock`, exactly like
 `dashboard_cache._TTLCache`.
 
-This is a per-process limiter: it does not coordinate across multiple
-uvicorn/gunicorn workers or Fargate tasks, so with more than one worker
-process each one enforces its own independent limit - a user spread across
-N processes could exceed the intended aggregate rate by up to Nx. Accepted
-for now for the same reason `dashboard_cache.py` accepts the equivalent
-limitation for its cache: a true global limiter would need a shared store
-(Redis or similar) this service doesn't otherwise depend on. Would need
-revisiting if this service is ever scaled to multiple workers/tasks in a
-way where this limitation actually bites in practice.
+The in-process log above is a per-process limiter: it does not coordinate
+across multiple uvicorn/gunicorn workers or Fargate tasks, so with more
+than one worker process each one enforces its own independent limit - a
+user spread across N processes could exceed the intended aggregate rate by
+up to Nx. See GitHub issue #16.
+
+`_SlidingWindowRateLimiter.check` closes that gap when `REDIS_URL` is
+configured (see `rag_pipeline.redis_support`): it re-checks on every call
+whether a shared Redis client is available and, if so, enforces the exact
+same sliding-window-log semantics (matching the trailing-window boundary
+behavior described above, not a fixed-window approximation) atomically via
+a small Lua script (`_SLIDING_WINDOW_LUA`) executed server-side with
+`EVAL`, using a Redis sorted set per key (score = request timestamp) in
+place of the in-process `deque`. Redis's single-threaded command execution
+makes the script's remove-expired / count / conditionally-add sequence
+atomic the same way the in-process version's `threading.Lock` does, so this
+preserves the limiter's exact behavior instead of approximating it - just
+backed by a store every process/task can see, instead of one only this
+process can see. `redis-py` (already a new dependency added for this - see
+rag-pipeline/pyproject.toml, which is where `rag_pipeline.redis_support`
+lives) is the natural, official Redis client; nothing already in this
+project's dependency tree provides one.
 
 Known limitation, accepted for now, mirroring dashboard_cache.py's
-equivalent: the dict of per-user deques grows by one entry per distinct
-user ever seen by this process, with no eviction - a user who stops making
-requests leaves behind an (eventually empty, once its entries age out)
-deque that just sits there. For this app's expected user counts this is a
-small, bounded amount of memory per long-running process, not worth the
-added complexity of an eviction policy today.
+equivalent: the in-process fallback's dict of per-user deques grows by one
+entry per distinct user ever seen by this process, with no eviction - a
+user who stops making requests leaves behind an (eventually empty, once its
+entries age out) deque that just sits there. For this app's expected user
+counts this is a small, bounded amount of memory per long-running process,
+not worth the added complexity of an eviction policy today. The Redis path
+avoids this specific issue (each user's sorted set naturally empties out
+and gets a fresh `EXPIRE` each time it's touched, so an abandoned key
+simply expires), but is out of scope to backport to the in-process
+fallback.
 """
 
 from __future__ import annotations
@@ -61,12 +81,55 @@ from __future__ import annotations
 import math
 import threading
 import time
+import uuid
 from collections import deque
 
 from fastapi import Depends, HTTPException, status
 
 from rag_api.auth import require_user_id
 from rag_api.config import load_rag_api_settings
+from rag_pipeline import redis_support
+
+# Lua script executed atomically via Redis EVAL, implementing the exact same
+# trailing-sliding-window-log algorithm as `_SlidingWindowRateLimiter.check`'s
+# in-process path (see this module's docstring), against a Redis sorted set
+# keyed by `KEYS[1]`, with each member's score set to the (wall-clock, since
+# multiple processes/hosts must agree on it - unlike `time.monotonic()`)
+# timestamp of the request it represents.
+#
+# ARGV[1] = now (float, seconds since epoch, i.e. `time.time()`)
+# ARGV[2] = window_seconds (float)
+# ARGV[3] = max_requests (integer)
+# ARGV[4] = member (a unique string identifying this request - `time.time()`
+#           alone is not guaranteed unique across concurrent callers, and a
+#           sorted set requires unique members)
+#
+# Returns the number of seconds (as a Lua number, coerced to a Redis bulk
+# string by EVAL) the caller must wait before its next request would be
+# allowed, or "0" if the request was allowed (and has already been
+# recorded) - mirrored in Python by treating a non-positive result as
+# "allowed".
+_SLIDING_WINDOW_LUA = """
+local key = KEYS[1]
+local now = tonumber(ARGV[1])
+local window_seconds = tonumber(ARGV[2])
+local max_requests = tonumber(ARGV[3])
+local member = ARGV[4]
+local window_start = now - window_seconds
+
+redis.call('ZREMRANGEBYSCORE', key, '-inf', window_start)
+local count = redis.call('ZCARD', key)
+
+if count >= max_requests then
+    local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
+    local oldest_score = tonumber(oldest[2])
+    return tostring(oldest_score - window_start)
+end
+
+redis.call('ZADD', key, now, member)
+redis.call('EXPIRE', key, math.ceil(window_seconds) + 1)
+return '0'
+"""
 
 # Trailing-window length shared by every limiter in this module. Kept as a
 # single named constant rather than a per-limiter constructor argument,
@@ -77,21 +140,39 @@ WINDOW_SECONDS = 60.0
 
 
 class _SlidingWindowRateLimiter:
-    """A tiny per-key sliding-window request counter: `key -> deque[timestamp]`.
+    """A tiny per-key sliding-window request counter.
+
+    In-process fallback storage is `key -> deque[timestamp]`; when
+    `REDIS_URL` is configured, storage instead becomes a Redis sorted set
+    per key (see this module's docstring and `_SLIDING_WINDOW_LUA`) so the
+    limit is enforced across every process/task sharing that Redis
+    instance, not just this one.
 
     `check(key, max_requests)` records a request for `key` and returns
     `None` if it's within `max_requests` over the trailing `WINDOW_SECONDS`.
     If the limit has already been reached, the request is *not* recorded,
     and the number of seconds until the caller's next request would be
     allowed is returned instead.
+
+    `namespace` scopes this instance's Redis keys (e.g. `"query"` vs.
+    `"upload"`), so the two module-level limiters below - and
+    `rag_pipeline.dashboard_cache`'s own keys in the same Redis instance -
+    never collide with each other.
     """
 
-    def __init__(self, window_seconds: float = WINDOW_SECONDS) -> None:
+    def __init__(self, namespace: str = "default", window_seconds: float = WINDOW_SECONDS) -> None:
+        self._namespace = namespace
         self._window_seconds = window_seconds
         self._lock = threading.Lock()
         self._requests: dict[str, deque[float]] = {}
 
     def check(self, key: str, max_requests: int) -> float | None:
+        client = redis_support.get_redis_client()
+        if client is not None:
+            return self._check_redis(client, key, max_requests)
+        return self._check_local(key, max_requests)
+
+    def _check_local(self, key: str, max_requests: int) -> float | None:
         now = time.monotonic()
         window_start = now - self._window_seconds
         with self._lock:
@@ -112,18 +193,47 @@ class _SlidingWindowRateLimiter:
             timestamps.append(now)
             return None
 
+    def _redis_key(self, key: str) -> str:
+        return f"ratelimit:{self._namespace}:{key}"
+
+    def _check_redis(self, client: "redis_support.redis.Redis", key: str, max_requests: int) -> float | None:
+        now = time.time()
+        # Unique per call (time.time() alone isn't guaranteed unique across
+        # concurrent callers, and ZADD requires unique members).
+        member = f"{now!r}:{uuid.uuid4()}"
+        result = client.eval(
+            _SLIDING_WINDOW_LUA,
+            1,
+            self._redis_key(key),
+            repr(now),
+            repr(self._window_seconds),
+            str(max_requests),
+            member,
+        )
+        retry_after_seconds = float(result)
+        if retry_after_seconds > 0:
+            return math.ceil(retry_after_seconds)
+        return None
+
     def reset_for_tests(self) -> None:
-        """Wipe all tracked keys. Test-isolation helper only, mirroring
-        `dashboard_cache._TTLCache.clear`."""
+        """Wipe all tracked keys, both the in-process fallback and (if
+        configured) this instance's Redis keys. Test-isolation helper only,
+        mirroring `dashboard_cache._TTLCache.clear`."""
         with self._lock:
             self._requests.clear()
+        client = redis_support.get_redis_client()
+        if client is None:
+            return
+        for redis_key in client.scan_iter(match=self._redis_key("*")):
+            client.delete(redis_key)
 
 
-# Separate limiter instances (separate dicts/locks) for query vs. upload,
-# since they have different costs and independently configured limits - a
-# user maxing out one must not affect their remaining budget on the other.
-_query_limiter = _SlidingWindowRateLimiter()
-_upload_limiter = _SlidingWindowRateLimiter()
+# Separate limiter instances (separate dicts/locks, and separate Redis key
+# namespaces) for query vs. upload, since they have different costs and
+# independently configured limits - a user maxing out one must not affect
+# their remaining budget on the other.
+_query_limiter = _SlidingWindowRateLimiter(namespace="query")
+_upload_limiter = _SlidingWindowRateLimiter(namespace="upload")
 
 
 def _enforce(limiter: _SlidingWindowRateLimiter, user_id: str, max_requests: int) -> None:

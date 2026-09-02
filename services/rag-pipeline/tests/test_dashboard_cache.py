@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from rag_pipeline import dashboard, dashboard_cache
+from rag_pipeline import dashboard, dashboard_cache, redis_support
 from rag_pipeline.dashboard import get_dashboard_summary, get_recent_activity
 from rag_pipeline.dashboard_cache import invalidate_dashboard_cache
 from rag_pipeline.documents import delete_document
@@ -382,3 +382,165 @@ def test_reset_for_tests_clears_both_caches(fake_supabase, fake_settings, mocker
 
     assert summary_spy.call_count == 2
     assert activity_spy.call_count == 2
+
+
+# --- Redis-backed path (rag_pipeline.redis_support) -------------------------
+#
+# `FakeRedis` re-implements just enough of redis-py's surface (GET/SETEX/
+# DELETE/SCAN_ITER) to exercise `_HybridTTLCache`'s real Redis-path logic
+# end-to-end (serialization included) without needing a live Redis server.
+
+
+class FakeRedis:
+    def __init__(self) -> None:
+        self._store: dict[bytes, bytes] = {}
+
+    def get(self, key: bytes):
+        return self._store.get(key)
+
+    def setex(self, key: bytes, ttl_seconds: int, value: bytes) -> None:
+        assert ttl_seconds > 0
+        self._store[key] = value
+
+    def delete(self, key: bytes) -> None:
+        self._store.pop(key, None)
+
+    def scan_iter(self, match: bytes):
+        assert match.endswith(b"*")
+        prefix = match[:-1]
+        return [key for key in self._store if key.startswith(prefix)]
+
+
+@pytest.fixture
+def fake_redis_client(monkeypatch) -> FakeRedis:
+    """Monkeypatch `redis_support.get_redis_client` (as seen by
+    `rag_pipeline.dashboard_cache`) to return a fresh `FakeRedis` instance,
+    so `_HybridTTLCache` takes the Redis-backed path instead of the
+    in-process fallback."""
+    client = FakeRedis()
+    monkeypatch.setattr(redis_support, "get_redis_client", lambda: client)
+    return client
+
+
+def test_redis_path_second_summary_call_within_ttl_does_not_requery(
+    fake_supabase, fake_settings, fake_redis_client, mocker
+):
+    _seed_transaction(fake_supabase)
+    compute_spy = mocker.spy(dashboard, "_compute_dashboard_summary")
+
+    first = get_dashboard_summary(USER_ID, settings=fake_settings)
+    second = get_dashboard_summary(USER_ID, settings=fake_settings)
+
+    assert compute_spy.call_count == 1
+    assert second == first
+    assert any(key.startswith(b"dashcache:summary:") for key in fake_redis_client._store)
+
+
+def test_redis_path_summary_requeries_after_invalidation(
+    fake_supabase, fake_settings, fake_redis_client, mocker
+):
+    _seed_transaction(fake_supabase)
+    compute_spy = mocker.spy(dashboard, "_compute_dashboard_summary")
+
+    first = get_dashboard_summary(USER_ID, settings=fake_settings)
+    _seed_transaction(fake_supabase, amount="500.00")
+    invalidate_dashboard_cache(USER_ID)
+    second = get_dashboard_summary(USER_ID, settings=fake_settings)
+
+    assert compute_spy.call_count == 2
+    assert second.total_income == 600.00
+    assert second != first
+
+
+def test_redis_path_activity_requeries_after_invalidation(
+    fake_supabase, fake_settings, fake_redis_client, mocker
+):
+    _seed_transaction(fake_supabase, id="tx-first")
+    compute_spy = mocker.spy(dashboard, "_compute_recent_activity")
+
+    first = get_recent_activity(USER_ID, settings=fake_settings)
+    _seed_transaction(fake_supabase, id="tx-second", occurred_on="2099-01-01")
+    invalidate_dashboard_cache(USER_ID)
+    second = get_recent_activity(USER_ID, settings=fake_settings)
+
+    assert compute_spy.call_count == 2
+    assert [tx.id for tx in first] == ["tx-first"]
+    assert [tx.id for tx in second] == ["tx-second", "tx-first"]
+
+
+def test_redis_path_different_users_do_not_share_a_summary_cache_entry(
+    fake_supabase, fake_settings, fake_redis_client
+):
+    _seed_transaction(fake_supabase, user_id=USER_ID, amount="100.00")
+    _seed_transaction(fake_supabase, user_id=OTHER_USER_ID, amount="999.00")
+
+    summary_a = get_dashboard_summary(USER_ID, settings=fake_settings)
+    summary_b = get_dashboard_summary(OTHER_USER_ID, settings=fake_settings)
+
+    assert summary_a.total_income == 100.00
+    assert summary_b.total_income == 999.00
+
+
+def test_redis_path_invalidating_one_user_does_not_evict_the_other(
+    fake_supabase, fake_settings, fake_redis_client, mocker
+):
+    _seed_transaction(fake_supabase, user_id=USER_ID)
+    _seed_transaction(fake_supabase, user_id=OTHER_USER_ID)
+    compute_spy = mocker.spy(dashboard, "_compute_dashboard_summary")
+
+    get_dashboard_summary(USER_ID, settings=fake_settings)
+    get_dashboard_summary(OTHER_USER_ID, settings=fake_settings)
+    assert compute_spy.call_count == 2
+
+    invalidate_dashboard_cache(USER_ID)
+
+    get_dashboard_summary(OTHER_USER_ID, settings=fake_settings)
+    assert compute_spy.call_count == 2
+
+    get_dashboard_summary(USER_ID, settings=fake_settings)
+    assert compute_spy.call_count == 3
+
+
+def test_redis_path_summary_and_activity_caches_use_separate_namespaces(
+    fake_supabase, fake_settings, fake_redis_client, mocker
+):
+    _seed_transaction(fake_supabase)
+    summary_spy = mocker.spy(dashboard, "_compute_dashboard_summary")
+    activity_spy = mocker.spy(dashboard, "_compute_recent_activity")
+
+    get_dashboard_summary(USER_ID, settings=fake_settings)
+    get_recent_activity(USER_ID, settings=fake_settings)
+    get_dashboard_summary(USER_ID, settings=fake_settings)
+    get_recent_activity(USER_ID, settings=fake_settings)
+
+    assert summary_spy.call_count == 1
+    assert activity_spy.call_count == 1
+    assert any(key.startswith(b"dashcache:summary:") for key in fake_redis_client._store)
+    assert any(key.startswith(b"dashcache:activity:") for key in fake_redis_client._store)
+
+
+def test_reset_for_tests_clears_redis_state(fake_supabase, fake_settings, fake_redis_client, mocker):
+    _seed_transaction(fake_supabase)
+    compute_spy = mocker.spy(dashboard, "_compute_dashboard_summary")
+
+    get_dashboard_summary(USER_ID, settings=fake_settings)
+    dashboard_cache.reset_for_tests()
+    assert fake_redis_client._store == {}
+
+    get_dashboard_summary(USER_ID, settings=fake_settings)
+
+    assert compute_spy.call_count == 2
+
+
+def test_falls_back_to_local_cache_when_redis_not_configured(fake_supabase, fake_settings, mocker):
+    """Without REDIS_URL/a configured client, `get_redis_client()` returns
+    None and the dashboard cache must still work via its in-process
+    `_TTLCache` fallback."""
+    _seed_transaction(fake_supabase)
+    compute_spy = mocker.spy(dashboard, "_compute_dashboard_summary")
+
+    first = get_dashboard_summary(USER_ID, settings=fake_settings)
+    second = get_dashboard_summary(USER_ID, settings=fake_settings)
+
+    assert compute_spy.call_count == 1
+    assert second == first

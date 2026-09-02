@@ -58,6 +58,16 @@ def rag_api_settings_env(monkeypatch, tmp_path):
     )
     monkeypatch.delenv("AGENT_CHECKPOINT_DB_URL", raising=False)
 
+    # Same reasoning as AGENT_CHECKPOINT_DB_URL above, for
+    # rag_api.rate_limiter's Redis-backed path (see
+    # rag_pipeline.redis_support): clear any REDIS_URL left in the
+    # developer's shell/.env, so these tests always exercise the in-process
+    # fallback unless a test explicitly opts into the Redis path via
+    # `redis_url_env`/`fake_redis_client` below. Without this, the "zero
+    # external dependencies" guarantee for this suite would only hold by
+    # accident.
+    monkeypatch.delenv("REDIS_URL", raising=False)
+
 
 @pytest.fixture
 def client():
