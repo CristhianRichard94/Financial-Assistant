@@ -25,6 +25,7 @@
   "auth": {
     "login": {
       "title": "Sign in to FinSight",
+      "description": "Track spending, forecast cash flow, and get AI-powered insights — all in one place.",
       "signInWithGoogle": "Sign in with Google",
       "redirecting": "Redirecting…",
       "errors": {

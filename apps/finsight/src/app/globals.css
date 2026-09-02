@@ -220,8 +220,28 @@ body {
   color-scheme: dark;
 }
 
+@keyframes drift-a {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(4%, -6%) scale(1.08); }
+}
+@keyframes drift-b {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-3%, 3%) scale(0.96); }
+}
+@keyframes drift-c {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(3%, 4%) scale(1.05); }
+}
+.animate-blob-a { animation: drift-a 22s ease-in-out infinite; }
+.animate-blob-b { animation: drift-b 28s ease-in-out infinite; animation-delay: -6s; }
+.animate-blob-c { animation: drift-c 18s ease-in-out infinite; animation-delay: -12s; }
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition-duration: 0.01ms !important;
+  }
+
+  .animate-blob-a, .animate-blob-b, .animate-blob-c {
+    animation: none;
   }
 }
