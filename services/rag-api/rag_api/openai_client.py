@@ -1,8 +1,13 @@
 """OpenAI-based answer synthesis over retrieved RAG chunks.
 
 This is a simple RAG-QA synthesis step (summarize/cite from a handful of
-already-retrieved text chunks), not a complex multi-step reasoning task, so
-no extended-reasoning/effort parameter is used here.
+already-retrieved text chunks), not a complex multi-step reasoning task.
+`reasoning_effort="minimal"` is passed on every chat completion call in this
+module to cap the reasoning tokens gpt-5 (a reasoning model) spends before
+producing visible output - those reasoning tokens are deducted from
+`max_completion_tokens` just like the visible content is, so an
+unconstrained reasoning effort can consume the entire budget and leave
+`choice.message.content` empty (see EmptyAnswerError below).
 """
 
 from __future__ import annotations
@@ -53,6 +58,18 @@ class AnswerRefusalError(RuntimeError):
     "the excerpts don't contain the answer" reply is not a refusal - it's a
     normal `finish_reason == "stop"` response and is already handled by the
     SYSTEM_PROMPT's "say so explicitly" rule.
+    """
+
+
+class EmptyAnswerError(RuntimeError):
+    """Raised when the model returns empty/None content with a normal
+    (non-content_filter) finish_reason.
+
+    With reasoning models like gpt-5, reasoning tokens are deducted from
+    `max_completion_tokens` before any visible output is produced. If
+    reasoning consumes the whole budget, `choice.message.content` comes back
+    empty or None even though the call itself succeeded - this must not be
+    treated as a valid answer and returned to the user as a blank 200.
     """
 
 
@@ -149,6 +166,10 @@ def ask_openai(
 
     Raises AnswerRefusalError if the model's response is withheld by OpenAI's
     content filter (finish_reason == "content_filter").
+
+    Raises EmptyAnswerError if the model returns empty/None content for any
+    other reason (e.g. gpt-5's reasoning tokens exhausting the token budget
+    before any visible output is produced - see EmptyAnswerError).
     """
     client = get_client(settings.openai_api_key)
     prompt = build_prompt(question, results, critique_feedback=critique_feedback)
@@ -156,6 +177,7 @@ def ask_openai(
     response = client.chat.completions.create(
         model=settings.openai_chat_model,
         max_completion_tokens=MAX_TOKENS,
+        reasoning_effort="minimal",
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             *(history or []),
@@ -170,6 +192,11 @@ def ask_openai(
         )
 
     answer = choice.message.content
+    if not answer or not answer.strip():
+        raise EmptyAnswerError(
+            "The model returned an empty answer (finish_reason="
+            f"{choice.finish_reason!r})."
+        )
 
     sources = [
         SourceOut(filename=result.filename, similarity=result.similarity)
@@ -264,6 +291,7 @@ def check_groundedness(
         response = client.chat.completions.create(
             model=settings.openai_chat_model,
             max_completion_tokens=GROUNDEDNESS_MAX_TOKENS,
+            reasoning_effort="minimal",
             messages=[
                 {"role": "system", "content": GROUNDEDNESS_SYSTEM_PROMPT},
                 {
