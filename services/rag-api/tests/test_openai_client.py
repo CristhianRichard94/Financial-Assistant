@@ -133,6 +133,67 @@ class TestAskOpenaiEmptyContent:
             ask_openai("How much did I spend?", [_make_result()], _settings())
 
 
+class TestAskOpenaiPiiRedaction:
+    """End-to-end coverage of the pii_guard redaction integrated into
+    ask_openai, not just the regex in isolation (see rag_api.pii_guard)."""
+
+    def test_ask_openai_redacts_full_card_number_in_generated_answer(self, mocker):
+        mock_client = mocker.Mock()
+        mock_client.chat.completions.create.return_value = _make_chat_response(
+            "Your card number on file is 4111111111111111."
+        )
+        mocker.patch("rag_api.openai_client.get_client", return_value=mock_client)
+
+        answer, _sources = ask_openai(
+            "What's my card number?", [_make_result()], _settings()
+        )
+
+        assert "4111111111111111" not in answer
+        assert "1111" in answer
+
+    def test_ask_openai_redacts_ssn_like_pattern_in_generated_answer(self, mocker):
+        mock_client = mocker.Mock()
+        mock_client.chat.completions.create.return_value = _make_chat_response(
+            "The SSN listed on this document is 123-45-6789."
+        )
+        mocker.patch("rag_api.openai_client.get_client", return_value=mock_client)
+
+        answer, _sources = ask_openai(
+            "What's the SSN on this document?", [_make_result()], _settings()
+        )
+
+        assert "123-45-6789" not in answer
+        assert "***-**-6789" in answer
+
+    def test_ask_openai_does_not_redact_last_four_digit_mention(self, mocker):
+        mock_client = mocker.Mock()
+        mock_client.chat.completions.create.return_value = _make_chat_response(
+            "The last 4 digits of your card are 1111."
+        )
+        mocker.patch("rag_api.openai_client.get_client", return_value=mock_client)
+
+        answer, _sources = ask_openai(
+            "What's the last 4 digits of my card?", [_make_result()], _settings()
+        )
+
+        assert answer == "The last 4 digits of your card are 1111."
+
+    def test_ask_openai_does_not_redact_dates_or_amounts(self, mocker):
+        mock_client = mocker.Mock()
+        mock_client.chat.completions.create.return_value = _make_chat_response(
+            "Between 2024-01-01 and 2024-01-31, you spent $1,234.56 across 12 transactions."
+        )
+        mocker.patch("rag_api.openai_client.get_client", return_value=mock_client)
+
+        answer, _sources = ask_openai(
+            "How much did I spend in January?", [_make_result()], _settings()
+        )
+
+        assert answer == (
+            "Between 2024-01-01 and 2024-01-31, you spent $1,234.56 across 12 transactions."
+        )
+
+
 class TestCheckGroundednessReasoningEffort:
     def test_check_groundedness_passes_minimal_reasoning_effort(self, mocker):
         mock_client = mocker.Mock()
