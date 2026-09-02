@@ -13,13 +13,14 @@ per-user auth and no CORS configuration, since it's never called directly
 from a browser. Its ALB is public (fronted by a CloudFront distribution,
 see `infra/rag_api_stack.py` and `DEPLOYMENT.md`), so the primary access
 control is a shared-secret `X-Internal-Api-Key` header required on every
-route except `/healthz` (see `rag_api/auth.py`).
+route except `/healthz` and `/readyz` (see `rag_api/auth.py`).
 
 ## Endpoints
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/healthz` | Liveness check for the ALB (no auth, no dependency checks) |
+| `GET` | `/healthz` | Liveness check for the ECS container health check (no auth, no dependency checks) |
+| `GET` | `/readyz` | Readiness check for the ALB target group (no auth); verifies Supabase is reachable, returns 503 if not |
 | `GET` | `/documents` | List all documents |
 | `POST` | `/upload` | Upload a file (`multipart/form-data`, field `file`); ingestion runs in the background |
 | `DELETE` | `/documents/{document_id}` | Delete a document and its chunks |
@@ -110,7 +111,7 @@ services/rag-api/
     status_mapping.py        rag_pipeline status/filename -> frontend DocumentOut mapping
     openai_client.py          OpenAI prompt construction + answer synthesis
     routes/
-      health.py               GET /healthz
+      health.py               GET /healthz, GET /readyz
       documents.py             GET /documents, POST /upload, DELETE /documents/{id}
       query.py                  POST /query
   tests/                    pytest + FastAPI TestClient, all pipeline/OpenAI calls mocked
