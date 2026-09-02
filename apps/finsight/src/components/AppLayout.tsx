@@ -60,7 +60,7 @@ function IdentityMenu({ user }: { user: SidebarUser }) {
         <button
           type="button"
           aria-label={`${identityLabel} account menu`}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[hsl(var(--sidebar-foreground))] hover:bg-white/10 hover:text-white transition-all motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--sidebar-primary))] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--sidebar))] mb-3"
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--sidebar-muted))] hover:text-[hsl(var(--foreground))] transition-all motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--sidebar-primary))] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--sidebar))] mb-3"
         >
           <Avatar className="h-8 w-8 shrink-0">
             <AvatarImage src={user.avatarUrl ?? undefined} alt="" />
@@ -110,7 +110,7 @@ function ThemeToggle({ variant }: { variant: "desktop" | "mobile" }) {
       <button
         type="button"
         onClick={() => setTheme(isDark ? "light" : "dark")}
-        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[hsl(var(--sidebar-foreground))] hover:bg-white/10 hover:text-white transition-all motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--sidebar-primary))] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--sidebar))] mb-3"
+        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--sidebar-muted))] hover:text-[hsl(var(--foreground))] transition-all motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--sidebar-primary))] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--sidebar))] mb-3"
       >
         {isDark ? (
           <Moon className="w-4 h-4 shrink-0" />
@@ -165,7 +165,7 @@ function LanguageToggle({ variant }: { variant: "desktop" | "mobile" }) {
       <button
         type="button"
         onClick={handleToggle}
-        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[hsl(var(--sidebar-foreground))] hover:bg-white/10 hover:text-white transition-all motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--sidebar-primary))] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--sidebar))] mb-3"
+        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--sidebar-muted))] hover:text-[hsl(var(--foreground))] transition-all motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--sidebar-primary))] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--sidebar))] mb-3"
       >
         <Languages className="w-4 h-4 shrink-0" />
         {isSpanish ? t("english") : t("spanish")}
@@ -201,13 +201,13 @@ function Sidebar({ onClose, user }: { onClose?: () => void; user: SidebarUser })
     <aside className="flex flex-col h-full w-64 bg-[hsl(var(--sidebar))] text-[hsl(var(--sidebar-foreground))]">
       <div className="flex items-center gap-3 px-6 py-5 border-b border-[hsl(var(--sidebar-border))]">
         <div className="w-8 h-8 rounded-lg bg-[hsl(var(--primary))] flex items-center justify-center">
-          <TrendingUp className="w-4 h-4 text-white" />
+          <TrendingUp className="w-4 h-4 text-[hsl(var(--primary-foreground))]" />
         </div>
-        <span className="font-semibold text-lg tracking-tight text-white">{tCommon("appName")}</span>
+        <span className="font-semibold text-lg tracking-tight text-[hsl(var(--sidebar-foreground))]">{tCommon("appName")}</span>
         {onClose && (
           <button
             onClick={onClose}
-            className="ml-auto p-1 rounded hover:bg-white/10 transition-colors lg:hidden"
+            className="ml-auto p-1 rounded hover:bg-[hsl(var(--sidebar-muted))] transition-colors lg:hidden"
           >
             <X className="w-4 h-4" />
           </button>
@@ -225,8 +225,8 @@ function Sidebar({ onClose, user }: { onClose?: () => void; user: SidebarUser })
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ease-out",
                 active
-                  ? "bg-[hsl(var(--primary))] text-white shadow-sm"
-                  : "text-[hsl(var(--sidebar-foreground))] hover:bg-white/10 hover:text-white"
+                  ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-sm"
+                  : "text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--sidebar-muted))] hover:text-[hsl(var(--foreground))]"
               )}
             >
               <Icon className="w-4 h-4 shrink-0" />
