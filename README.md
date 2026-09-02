@@ -12,6 +12,7 @@ independent Python RAG backend.
 ## Contents
 
 - [Architecture](#architecture)
+  - [Agentic query flow](#agentic-query-flow)
 - [Authentication](#authentication)
 - [Repository layout](#repository-layout)
 - [Prerequisites](#prerequisites)
@@ -68,7 +69,8 @@ Deliberate decisions worth calling out (see [`DECISIONS.md`](./DECISIONS.md) for
 - **Chat message durability is split from answer generation.** User/assistant messages are written straight to Supabase (`chat_messages`, RLS-scoped to the caller's own session) from the Next.js route, while the assistant's reply text comes from a separate call to the RAG API's `/query`. If the RAG API is down, the user's message still saves and a fallback reply is stored instead of losing the message.
 - **Dashboard aggregates are computed on the RAG API** from real stored documents/transactions, behind a short-TTL cache to keep the dashboard responsive under repeated polling — not a Next.js-side mock store.
 - **Auth and app data share one Supabase project** (Postgres + pgvector + Auth), avoiding a second identity provider for a demo-scale app.
-- A LangGraph-based `/query/agent` endpoint (multi-turn conversation memory via a checkpointer) exists in `rag-api` alongside the plain `/query` used today, but isn't called by the frontend yet — built as a drop-in upgrade path, not wired up.
+- A LangGraph-based `/query/agent` endpoint exists in `rag-api` alongside the plain `/query` used today, but isn't called by the frontend yet — built as a drop-in upgrade path, not wired up. It's a multi-node agent graph, not a single LLM call — see [Agentic query flow](#agentic-query-flow) below.
+- **`rag-api`'s Fargate task runs in a public subnet with no NAT Gateway**, sized for on-demand demo hosting (spin up before a demo, tear down after via `services/rag-api/infra/deploy.sh`/`destroy.sh`) rather than an always-on deployment — see [`services/rag-api/DEPLOYMENT.md`](./services/rag-api/DEPLOYMENT.md#demo-hosting-on-demand). Access control is unchanged: the task only accepts traffic from the ALB's security group, and the ALB only accepts traffic from CloudFront's origin-facing IP range.
 
 - **Frontend**: Next.js 15 (App Router), Tailwind CSS v4, TanStack Query, `next-intl` (Spanish default, English available), `sonner` toasts, `react-dropzone` uploads, `next-themes` for light/dark mode.
 - **API**: Next.js Route Handlers (`src/app/api/**`), owns all `/api/*` routes.
@@ -76,6 +78,57 @@ Deliberate decisions worth calling out (see [`DECISIONS.md`](./DECISIONS.md) for
 - **Dashboard, documents, and chat** are all wired to the real RAG backend — there is no mock data path left in the frontend.
 
 See [`DECISIONS.md`](./DECISIONS.md) for the day-to-day architecture-decisions log kept alongside this codebase.
+
+### Agentic query flow
+
+`rag-api`'s `/query/agent` endpoint (`rag_api/agent/`) runs a LangGraph state
+graph instead of the single-shot retrieve-then-answer flow behind the plain
+`/query` endpoint:
+
+```
+parse ---out_of_scope---> END (canned answer)
+  |
+  +---retrieve---> grade ---[no relevant results?]--refine--> retrieve (loop, capped)
+                      |
+                      +--has relevant results / attempts exhausted--> generate
+                                                                |
+                                                                v
+                                                             critique
+                                                                |
+                                    +---ungrounded, attempts left---+
+                                    |                               |
+                                    v                               v
+                                generate (regenerate,           END (grounded, or
+                                with feedback)                  attempts exhausted -
+                                                                 caveat appended)
+```
+
+- **`parse`** classifies intent and rewrites the question into a retrieval
+  query, short-circuiting to a canned response for out-of-scope questions
+  instead of wasting a retrieval + generation round-trip.
+- **`retrieve` → `grade`** runs vector search and grades whether the results
+  are actually relevant; if not, **`refine`** rewrites the query and loops
+  back to `retrieve`, capped at a fixed number of attempts.
+- **`generate`** synthesizes the answer from the graded-relevant chunks.
+- **`critique`** is a groundedness self-critique step: a second LLM call
+  checks every factual claim in the candidate answer against the retrieved
+  excerpts only (no outside knowledge). An ungrounded answer with attempts
+  remaining triggers a regeneration of `generate` with the critique's
+  feedback folded into the prompt; if attempts run out, the answer is
+  returned with a caveat appended rather than silently served as fact.
+- **Conversation memory** persists across turns via a LangGraph checkpointer
+  keyed by `f"{user_id}:{conversation_id}"` — Postgres (Supabase) in
+  production, since the Fargate task's filesystem is ephemeral and a
+  SQLite/in-memory checkpointer would lose history on every restart or
+  redeploy; SQLite is used only for local dev/tests.
+- Both LLM calls in this flow use `gpt-5` (a reasoning model) with
+  `reasoning_effort="minimal"` and an explicit empty-answer guard — reasoning
+  tokens count against the completion budget, and without a cap they could
+  previously exhaust it and return a blank answer as a false-positive 200
+  (see [issue #24](https://github.com/CristhianRichard94/Financial-Assistant/issues/24)).
+
+Not called by the frontend yet (still on the plain single-shot `/query`) —
+built and tested as a drop-in upgrade path.
 
 ## Authentication
 
@@ -220,6 +273,12 @@ is independent of the RAG API call that generates the assistant's reply).
   development environment. See
   [`services/rag-api/DEPLOYMENT.md`](./services/rag-api/DEPLOYMENT.md) for
   the manual deployment steps.
+- The stack is designed for **on-demand demo hosting** rather than running
+  24/7: `services/rag-api/infra/deploy.sh` deploys and prints the
+  `RAG_API_BASE_URL` to set on the frontend, `services/rag-api/infra/destroy.sh`
+  tears it down after. No NAT Gateway is provisioned (the Fargate task runs
+  in a public subnet), keeping idle cost near zero between demos — see
+  [Demo hosting (on-demand)](./services/rag-api/DEPLOYMENT.md#demo-hosting-on-demand).
 
 ## Project docs
 
