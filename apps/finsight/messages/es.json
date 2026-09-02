@@ -25,6 +25,7 @@
   "auth": {
     "login": {
       "title": "Iniciar sesión en FinSight",
+      "description": "Controla tus gastos, proyecta tu flujo de caja y obtén información impulsada por IA, todo en un solo lugar.",
       "signInWithGoogle": "Iniciar sesión con Google",
       "redirecting": "Redirigiendo…",
       "errors": {

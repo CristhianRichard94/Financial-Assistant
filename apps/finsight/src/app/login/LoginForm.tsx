@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { BrandLockup } from "@/components/auth/BrandLockup";
+import { AnimatedGradientBackground } from "@/components/auth/AnimatedGradientBackground";
 import { createClient } from "@/lib/supabase/browser";
 import { safeRedirect } from "@/lib/safeRedirect";
 
@@ -70,10 +71,15 @@ export function LoginForm({ error: initialError, redirectTo }: LoginFormProps) {
   }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-[hsl(var(--background))] px-4 py-12">
+    <div className="relative min-h-screen w-full flex items-center justify-center bg-[hsl(var(--background))] px-4 py-12">
+      <AnimatedGradientBackground />
       <h1 className="sr-only">{t("title")}</h1>
-      <div className="w-full max-w-sm flex flex-col items-center gap-8">
+      <div className="relative z-10 w-full max-w-sm flex flex-col items-center gap-8">
         <BrandLockup />
+
+        <p className="text-sm sm:text-base font-normal text-[hsl(var(--muted-foreground))] text-center max-w-[280px] sm:max-w-sm leading-relaxed">
+          {t("description")}
+        </p>
 
         {errorCopy && (
           <Alert variant="destructive">
