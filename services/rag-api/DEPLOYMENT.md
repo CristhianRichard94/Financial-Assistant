@@ -200,3 +200,45 @@ a hang.
 This does not delete the Secrets Manager secrets created in step 2 (by
 design, they're managed independently) - delete them manually with
 `aws secretsmanager delete-secret` if you no longer need them.
+
+## Demo hosting (on-demand)
+
+This stack is meant to be run only when actually needed (expected at most
+~10 demos/month), not left up continuously - the ECS Fargate task, ALB, and
+CloudFront distribution all bill for the time they exist, and the Fargate
+task itself has no NAT Gateway in its path (see `task_subnets`/`Vpc` in
+`infra/rag_api_stack.py`), so there's no idle NAT cost either way. The
+prerequisites above (ECR/Docker, Secrets Manager secrets, CDK bootstrap) only
+need to be done once; after that, spinning the stack up and down per demo is
+just:
+
+```bash
+# ~5-10 min before the demo:
+cd services/rag-api/infra
+./deploy.sh
+```
+
+`deploy.sh` runs `cdk deploy` and, on success, prints the CloudFront domain
+labeled as the `RAG_API_BASE_URL` value to set in the frontend's environment
+(same value as the `DistributionDomainName` output in steps 5-7 above).
+Requires the `jq` CLI to parse the CDK outputs file. Verify the deployment is
+healthy before demoing:
+
+```bash
+curl https://<the printed domain>/healthz
+```
+
+```bash
+# Right after the demo:
+cd services/rag-api/infra
+./destroy.sh
+```
+
+`destroy.sh` runs `cdk destroy --force`, skipping the interactive
+confirmation prompt since this is meant to be run routinely. As noted above,
+CloudFront takes several minutes to disable and delete, so both `deploy.sh`
+and `destroy.sh` add a few extra minutes versus a stack without CloudFront -
+splitting CloudFront into a separately-persisted stack (kept up across
+demos, with only ECS/ALB destroyed each time) was considered but rejected as
+unnecessary complexity for ~10 demos/month; destroying the whole stack each
+time is the accepted tradeoff.
