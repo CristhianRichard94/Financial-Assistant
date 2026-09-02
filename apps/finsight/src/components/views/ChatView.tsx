@@ -339,7 +339,7 @@ export function ChatView() {
   }, [messages, optimisticMessages]);
 
   return (
-    <div className="flex flex-col h-full bg-[hsl(var(--background))]">
+    <div className="flex flex-col h-full min-h-0 bg-[hsl(var(--background))]">
       {/* Header */}
       <div className="px-6 py-4 border-b border-[hsl(var(--border))] bg-[hsl(var(--card))] shrink-0">
         <div className="flex items-center gap-3">
@@ -356,7 +356,7 @@ export function ChatView() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 lg:px-8 py-6 space-y-6">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 lg:px-8 py-6 space-y-6">
         {isLoading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="w-6 h-6 animate-spin text-[hsl(var(--muted-foreground))]" />

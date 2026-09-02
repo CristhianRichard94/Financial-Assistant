@@ -279,7 +279,7 @@ export function AppLayout({
       )}
 
       {/* Main content */}
-      <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
+      <div className="flex flex-1 flex-col min-w-0 min-h-0 overflow-hidden">
         {/* Mobile header */}
         <header className="flex items-center gap-3 px-4 py-3 border-b border-[hsl(var(--border))] lg:hidden">
           <button
@@ -298,7 +298,7 @@ export function AppLayout({
           <LanguageToggle variant="mobile" />
         </header>
 
-        <main className="flex-1 overflow-auto">{children}</main>
+        <main className="flex-1 min-h-0 overflow-auto">{children}</main>
       </div>
     </div>
   );
