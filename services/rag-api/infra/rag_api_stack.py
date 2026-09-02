@@ -77,9 +77,37 @@ class RagApiStack(Stack):
             for env_var_name, secret_name in SECRET_NAMES.items()
         }
 
+        # Explicit VPC with `nat_gateways=0` and only a PUBLIC subnet type.
+        # Without this, leaving `vpc=` unset on
+        # `ApplicationLoadBalancedFargateService` below makes CDK provision
+        # its own default VPC, which - regardless of which subnets the task
+        # itself actually runs in (see `task_subnets=` below) - still
+        # includes private subnets behind 2 NAT Gateways (one per AZ) by
+        # default. NAT Gateways bill ~$0.045/h *each*, 24/7, purely for
+        # existing, independent of traffic - so they'd keep costing money
+        # even fully idle and even though the task doesn't route through
+        # them. This stack's task only needs internet egress (to
+        # Supabase/OpenAI) and ALB ingress, both served directly by public
+        # subnets via an Internet Gateway at no hourly cost, so there is no
+        # NAT Gateway anywhere in this stack.
+        vpc = ec2.Vpc(
+            self,
+            "Vpc",
+            max_azs=2,
+            nat_gateways=0,
+            subnet_configuration=[
+                ec2.SubnetConfiguration(
+                    name="Public",
+                    subnet_type=ec2.SubnetType.PUBLIC,
+                    cidr_mask=24,
+                ),
+            ],
+        )
+
         service = ecs_patterns.ApplicationLoadBalancedFargateService(
             self,
             "RagApiService",
+            vpc=vpc,
             cpu=512,
             memory_limit_mib=1024,
             desired_count=1,
@@ -109,6 +137,14 @@ class RagApiStack(Stack):
             # default rule so the CloudFront-only rule added below is the
             # *only* ingress rule on the ALB's security group.
             open_listener=False,
+            # Run the task itself in the `vpc`'s (NAT-free) public subnets -
+            # see the `Vpc` construct above for why. This does not change
+            # the service's security posture: the ALB's security group is
+            # still locked down to CloudFront-only ingress (see
+            # `allow_from` below), and the task itself is not directly
+            # reachable - only the ALB is public.
+            task_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
+            assign_public_ip=True,
             task_image_options=ecs_patterns.ApplicationLoadBalancedTaskImageOptions(
                 image=ecs.ContainerImage.from_asset(
                     str(REPO_ROOT),
