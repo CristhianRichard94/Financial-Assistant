@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import base64
-import csv
 from pathlib import Path
 
 from openai import OpenAI
 from pypdf import PdfReader
 
 from rag_pipeline.config import VISION_MODEL, Settings, load_settings
+from rag_pipeline.csv_source import read_csv
 
 _IMAGE_MIME_TYPES = {
     ".jpg": "image/jpeg",
@@ -55,12 +55,11 @@ def parse_csv(path: Path) -> str:
     row as field names, which keeps row context inside a single chunk instead
     of relying on the model to infer column meaning from position alone.
     """
-    with path.open(newline="", encoding="utf-8-sig") as csv_file:
-        reader = csv.DictReader(csv_file)
-        lines = []
-        for row in reader:
-            rendered = " | ".join(f"{key}: {value}" for key, value in row.items())
-            lines.append(rendered)
+    _, rows = read_csv(path)
+    lines = []
+    for row in rows:
+        rendered = " | ".join(f"{key}: {value}" for key, value in row.items())
+        lines.append(rendered)
     return "\n".join(lines).strip()
 
 

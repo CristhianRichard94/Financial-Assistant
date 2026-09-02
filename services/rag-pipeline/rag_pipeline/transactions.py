@@ -15,10 +15,11 @@ not every uploaded CSV is expected to be a transaction export.
 
 from __future__ import annotations
 
-import csv
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
+
+from rag_pipeline.csv_source import find_column, read_csv
 
 _DATE_HEADERS = ["date", "transaction date", "posted date", "posting date"]
 _DESCRIPTION_HEADERS = ["description", "memo", "name", "payee", "details"]
@@ -38,14 +39,6 @@ class ParsedTransaction:
     amount: float
     category: str
     description: str
-
-
-def _find_column(fieldnames: list[str], candidates: list[str]) -> str | None:
-    normalized = {name.strip().lower(): name for name in fieldnames}
-    for candidate in candidates:
-        if candidate in normalized:
-            return normalized[candidate]
-    return None
 
 
 def _parse_date(raw: str) -> date | None:
@@ -86,60 +79,57 @@ def parse_transactions_csv(path: str | Path) -> list[ParsedTransaction]:
     like a transaction export at all. Individual rows missing a usable date
     or amount are silently skipped rather than failing the whole file.
     """
-    path = Path(path)
-    with path.open("r", encoding="utf-8-sig", newline="") as fh:
-        reader = csv.DictReader(fh)
-        fieldnames = reader.fieldnames
-        if not fieldnames:
-            return []
+    fieldnames, rows = read_csv(path)
+    if not fieldnames:
+        return []
 
-        date_col = _find_column(fieldnames, _DATE_HEADERS)
-        if date_col is None:
-            return []
+    date_col = find_column(fieldnames, _DATE_HEADERS)
+    if date_col is None:
+        return []
 
-        amount_col = _find_column(fieldnames, _AMOUNT_HEADERS)
-        debit_col = _find_column(fieldnames, _DEBIT_HEADERS)
-        credit_col = _find_column(fieldnames, _CREDIT_HEADERS)
-        if amount_col is None and debit_col is None and credit_col is None:
-            return []
+    amount_col = find_column(fieldnames, _AMOUNT_HEADERS)
+    debit_col = find_column(fieldnames, _DEBIT_HEADERS)
+    credit_col = find_column(fieldnames, _CREDIT_HEADERS)
+    if amount_col is None and debit_col is None and credit_col is None:
+        return []
 
-        description_col = _find_column(fieldnames, _DESCRIPTION_HEADERS)
-        category_col = _find_column(fieldnames, _CATEGORY_HEADERS)
+    description_col = find_column(fieldnames, _DESCRIPTION_HEADERS)
+    category_col = find_column(fieldnames, _CATEGORY_HEADERS)
 
-        results: list[ParsedTransaction] = []
-        for row in reader:
-            occurred_on = _parse_date(row.get(date_col, "") or "")
-            if occurred_on is None:
-                continue
+    results: list[ParsedTransaction] = []
+    for row in rows:
+        occurred_on = _parse_date(row.get(date_col, "") or "")
+        if occurred_on is None:
+            continue
 
-            amount: float | None = None
-            if amount_col is not None:
-                amount = _parse_amount(row.get(amount_col, "") or "")
-            else:
-                debit = _parse_amount(row.get(debit_col, "") or "") if debit_col else None
-                credit = _parse_amount(row.get(credit_col, "") or "") if credit_col else None
-                if debit is not None and credit is not None:
-                    amount = credit - abs(debit)
-                elif debit is not None:
-                    amount = -abs(debit)
-                elif credit is not None:
-                    amount = credit
+        amount: float | None = None
+        if amount_col is not None:
+            amount = _parse_amount(row.get(amount_col, "") or "")
+        else:
+            debit = _parse_amount(row.get(debit_col, "") or "") if debit_col else None
+            credit = _parse_amount(row.get(credit_col, "") or "") if credit_col else None
+            if debit is not None and credit is not None:
+                amount = credit - abs(debit)
+            elif debit is not None:
+                amount = -abs(debit)
+            elif credit is not None:
+                amount = credit
 
-            if amount is None:
-                continue
+        if amount is None:
+            continue
 
-            description = (row.get(description_col, "") or "").strip() if description_col else ""
-            category = (row.get(category_col, "") or "").strip() if category_col else ""
-            if not category:
-                category = _DEFAULT_CATEGORY
+        description = (row.get(description_col, "") or "").strip() if description_col else ""
+        category = (row.get(category_col, "") or "").strip() if category_col else ""
+        if not category:
+            category = _DEFAULT_CATEGORY
 
-            results.append(
-                ParsedTransaction(
-                    occurred_on=occurred_on,
-                    amount=amount,
-                    category=category,
-                    description=description,
-                )
+        results.append(
+            ParsedTransaction(
+                occurred_on=occurred_on,
+                amount=amount,
+                category=category,
+                description=description,
             )
+        )
 
-        return results
+    return results

@@ -6,7 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from rag_pipeline.parsing import parse_document, parse_image
+from rag_pipeline.parsing import parse_csv, parse_document, parse_image
+from rag_pipeline.transactions import parse_transactions_csv
 
 
 def _fake_openai_response(text: str):
@@ -109,6 +110,39 @@ def test_parse_document_still_works_for_pdf_and_csv_without_settings(tmp_path):
     csv_path.write_text("description,amount\nCoffee,5.00\n")
 
     assert parse_document(csv_path) == "description: Coffee | amount: 5.00"
+
+
+def test_csv_parsers_share_bom_and_header_normalization(tmp_path):
+    csv_path = tmp_path / "transactions.csv"
+    csv_path.write_text(
+        "\ufeff  POSTED DATE  , Memo , TYPE , Transaction Amount\n"
+        "01/15/2026,Coffee,Dining,-4.50\n"
+        "01/16/2026,Paycheck,Income,2000.00\n",
+        encoding="utf-8",
+    )
+
+    text_rows = parse_csv(csv_path).splitlines()
+    transactions = parse_transactions_csv(csv_path)
+
+    assert len(text_rows) == len(transactions) == 2
+    assert all("POSTED DATE" in row for row in text_rows)
+    assert [transaction.description for transaction in transactions] == [
+        "Coffee",
+        "Paycheck",
+    ]
+
+
+def test_csv_parsers_keep_non_transaction_csv_behavior(tmp_path):
+    csv_path = tmp_path / "contacts.csv"
+    csv_path.write_text(
+        "First Name,Last Name,Email\nJane,Doe,jane@example.com\n",
+        encoding="utf-8",
+    )
+
+    assert parse_csv(csv_path) == (
+        "First Name: Jane | Last Name: Doe | Email: jane@example.com"
+    )
+    assert parse_transactions_csv(csv_path) == []
 
 
 def test_parse_document_raises_for_unsupported_extension(tmp_path):
