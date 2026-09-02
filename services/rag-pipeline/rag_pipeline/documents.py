@@ -11,6 +11,7 @@ from typing import Any
 
 from rag_pipeline.config import Settings, load_settings
 from rag_pipeline.dashboard_cache import invalidate_dashboard_cache
+from rag_pipeline.retry import execute_with_retry
 from rag_pipeline.supabase_client import get_supabase_client
 
 
@@ -38,12 +39,11 @@ def list_documents(user_id: str, settings: Settings | None = None) -> list[Docum
     settings = settings or load_settings()
     supabase = get_supabase_client(settings.supabase_url, settings.supabase_service_key)
 
-    response = (
+    response = execute_with_retry(
         supabase.table("documents")
         .select("*")
         .eq("user_id", user_id)
         .order("upload_date", desc=True)
-        .execute()
     )
     return [_row_to_record(row) for row in response.data]
 
@@ -61,13 +61,12 @@ def get_document(
     settings = settings or load_settings()
     supabase = get_supabase_client(settings.supabase_url, settings.supabase_service_key)
 
-    response = (
+    response = execute_with_retry(
         supabase.table("documents")
         .select("*")
         .eq("id", document_id)
         .eq("user_id", user_id)
         .limit(1)
-        .execute()
     )
     if not response.data:
         return None
@@ -87,12 +86,11 @@ def delete_document(document_id: str, user_id: str, settings: Settings | None = 
     settings = settings or load_settings()
     supabase = get_supabase_client(settings.supabase_url, settings.supabase_service_key)
 
-    response = (
+    response = execute_with_retry(
         supabase.table("documents")
         .delete()
         .eq("id", document_id)
         .eq("user_id", user_id)
-        .execute()
     )
     deleted = len(response.data) > 0
     if deleted:

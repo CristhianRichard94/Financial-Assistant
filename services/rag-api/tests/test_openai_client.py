@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 from rag_pipeline.search import SearchResult
 
+import rag_api.openai_client as openai_client_module
 from rag_api.config import RagApiSettings
 from rag_api.openai_client import (
     AnswerRefusalError,
@@ -15,6 +16,7 @@ from rag_api.openai_client import (
     ask_openai,
     build_prompt,
     check_groundedness,
+    get_client,
 )
 
 
@@ -76,6 +78,30 @@ def test_build_prompt_keeps_normal_filename_intact():
     prompt = build_prompt("What did I spend?", [result])
 
     assert 'source="bank_statement_may2025.pdf"' in prompt
+
+
+class TestGetClientRetryConfig:
+    """openai-python already retries transient errors (timeouts, connection
+    errors, 429, 5xx) itself with backoff+jitter, and never retries 4xx - see
+    rag_api/openai_client.py's module-level comment above `get_client`. This
+    just verifies the client is actually constructed with a bounded timeout
+    and explicit max_retries, rather than the library's very long defaults.
+    """
+
+    def test_get_client_sets_bounded_timeout_and_max_retries(self, mocker):
+        openai_client_module._client = None
+        mock_openai_cls = mocker.patch("rag_api.openai_client.OpenAI")
+
+        get_client("sk-test-key")
+
+        _, kwargs = mock_openai_cls.call_args
+        assert kwargs["api_key"] == "sk-test-key"
+        assert kwargs["max_retries"] == 2
+        timeout = kwargs["timeout"]
+        # A bounded read timeout well under openai-python's 600s default -
+        # the exact value is an implementation detail, just assert it's sane.
+        assert 0 < timeout.read <= 30
+        openai_client_module._client = None
 
 
 class TestAskOpenaiReasoningEffort:

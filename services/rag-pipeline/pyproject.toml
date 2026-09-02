@@ -15,6 +15,16 @@ dependencies = [
     "openai>=1.40.0",
     "supabase>=2.6.0",
     "python-dotenv>=1.0.0",
+    # Retry/backoff for Supabase (postgrest-py) calls (see rag_pipeline/
+    # retry.py). Neither supabase-py's ClientOptions nor postgrest-py's
+    # request builder expose any retry/backoff mechanism (only timeouts),
+    # unlike openai.OpenAI which already has this built in - so this covers
+    # a gap that isn't already met by an existing dependency.
+    "tenacity>=8.2.0",
+    # httpx is already an indirect dependency (via supabase/postgrest and
+    # openai), but retry.py imports its exception classes directly to
+    # classify transient network errors, so it's listed explicitly too.
+    "httpx>=0.27.0",
 ]
 
 [project.optional-dependencies]

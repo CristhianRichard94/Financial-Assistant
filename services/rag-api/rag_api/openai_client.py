@@ -16,6 +16,7 @@ import json
 import logging
 from dataclasses import dataclass
 
+import httpx
 from openai import OpenAI
 from rag_pipeline.search import SearchResult
 
@@ -75,11 +76,25 @@ class EmptyAnswerError(RuntimeError):
 
 _client: OpenAI | None = None
 
+# openai-python already retries transient errors itself (connection errors,
+# timeouts, HTTP 429, and 5xx) with its own exponential backoff+jitter - see
+# `openai._base_client.SyncAPIClient._should_retry`/`_calculate_retry_timeout`
+# - and never retries 4xx errors like auth/bad-request. That already covers
+# this issue's requirement for OpenAI calls without adding a dependency; the
+# only gap is configuration, not behavior: the library's *default* timeout
+# (connect=5s, read/write/pool=600s) is far too long to "fail fast enough"
+# for callers' existing graceful-degradation paths (e.g. rag_api's /query
+# fallback reply) if a request hangs. `timeout`/`max_retries` are set
+# explicitly below so a full retry cycle stays bounded to well under a
+# minute instead of tens of minutes.
+_REQUEST_TIMEOUT = httpx.Timeout(connect=5.0, read=20.0, write=20.0, pool=20.0)
+_MAX_RETRIES = 2  # 3 attempts total (1 initial + 2 retries), same cap used for Supabase retries
+
 
 def get_client(api_key: str) -> OpenAI:
     global _client
     if _client is None:
-        _client = OpenAI(api_key=api_key)
+        _client = OpenAI(api_key=api_key, timeout=_REQUEST_TIMEOUT, max_retries=_MAX_RETRIES)
     return _client
 
 

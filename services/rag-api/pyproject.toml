@@ -13,6 +13,11 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
     "openai>=1.40.0",
+    # httpx is already an indirect dependency (openai/fastapi's TestClient
+    # both use it), but rag_api/openai_client.py imports httpx.Timeout
+    # directly to bound the OpenAI client's request timeout, so it's listed
+    # explicitly here too instead of relying on it being an indirect one.
+    "httpx>=0.27.0",
     "python-multipart>=0.0.9",
     "langgraph>=0.2.0",
     "langgraph-checkpoint-sqlite>=2.0.0",
@@ -35,7 +40,6 @@ dependencies = [
 dev = [
     "pytest>=8.0.0",
     "pytest-mock>=3.14.0",
-    "httpx>=0.27.0",
 ]
 
 [tool.hatch.metadata]
