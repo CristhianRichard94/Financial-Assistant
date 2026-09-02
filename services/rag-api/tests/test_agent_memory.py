@@ -326,6 +326,73 @@ class TestGroundednessCritiqueLoop:
         check_groundedness.assert_not_called()
 
 
+class TestRetrievalGradingLoop:
+    """End-to-end tests for grade_node wired into the /query/agent graph
+    (parse -> retrieve -> grade -> generate -> ...). See
+    rag_api/agent/nodes.py:grade_node and rag_api/agent/graph.py.
+    """
+
+    def test_only_relevant_chunks_reach_the_generate_prompt(self, client, mocker):
+        """A mix of relevant and irrelevant (low-similarity) chunks comes
+        back from retrieval; grading must filter the irrelevant ones out
+        before generate_node builds the prompt sent to ask_openai."""
+        relevant = _make_result(chunk_text="Relevant chunk.", similarity=0.9)
+        irrelevant = _make_result(chunk_text="Irrelevant noise chunk.", similarity=0.05)
+        mocker.patch(
+            "rag_api.query_parser.parse_query", return_value=_make_parsed_query()
+        )
+        mocker.patch("rag_pipeline.search", return_value=[relevant, irrelevant])
+        ask_openai = mocker.patch(
+            "rag_api.openai_client.ask_openai",
+            return_value=("An answer.", []),
+        )
+        mocker.patch(
+            "rag_api.openai_client.check_groundedness",
+            return_value=GroundednessResult(grounded=True, issues=""),
+        )
+
+        response = client.post(
+            "/query/agent", json={"question": "How much did I spend?"}
+        )
+
+        assert response.status_code == 200
+        args, _ = ask_openai.call_args
+        results_passed = args[1]
+        assert results_passed == [relevant]
+
+    def test_all_irrelevant_results_trigger_refine_then_generate_anyway(
+        self, client, mocker
+    ):
+        """When every retrieved chunk is graded irrelevant, the graph loops
+        through refine (dropping filters) up to MAX_RETRIEVE_ATTEMPTS, then
+        still lets generate_node run (with empty results) rather than
+        looping forever - mirrors the pre-existing empty-retrieval give-up
+        behavior in route_after_retrieve."""
+        mocker.patch(
+            "rag_api.query_parser.parse_query", return_value=_make_parsed_query()
+        )
+        mocker.patch(
+            "rag_pipeline.search",
+            return_value=[_make_result(similarity=0.01)],
+        )
+        ask_openai = mocker.patch(
+            "rag_api.openai_client.ask_openai",
+            return_value=("Sorry, nothing found.", []),
+        )
+        mocker.patch(
+            "rag_api.openai_client.check_groundedness",
+            return_value=GroundednessResult(grounded=True, issues=""),
+        )
+
+        response = client.post(
+            "/query/agent", json={"question": "How much did I spend?"}
+        )
+
+        assert response.status_code == 200
+        args, _ = ask_openai.call_args
+        assert args[1] == []
+
+
 class TestCheckpointerBackendSelection:
     """Unit tests for `_get_checkpointer`'s choice between the SQLite
     fallback and the Postgres backend (see rag_api/agent/graph.py), without
