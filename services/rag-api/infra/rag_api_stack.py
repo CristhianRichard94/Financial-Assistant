@@ -61,6 +61,16 @@ SECRET_NAMES: dict[str, str] = {
     "AGENT_CHECKPOINT_DB_URL": "finsight/rag-api/AGENT_CHECKPOINT_DB_URL",
 }
 
+# Task-count defaults for the ECS service. `desired_count=1` (the previous
+# default) is a single point of failure: a deploy, crash, or AZ blip
+# recycling the one running task drops the whole backend to zero capacity
+# until ECS reschedules a replacement. `MIN_TASK_COUNT=2` keeps at least two
+# tasks running at all times so the ALB always has a healthy target while the
+# other is being replaced; `MAX_TASK_COUNT` bounds how far the target-tracking
+# policy below is allowed to scale out under load. See GitHub issue #15.
+MIN_TASK_COUNT = 2
+MAX_TASK_COUNT = 4
+
 
 class RagApiStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs: Any) -> None:
@@ -110,7 +120,10 @@ class RagApiStack(Stack):
             vpc=vpc,
             cpu=512,
             memory_limit_mib=1024,
-            desired_count=1,
+            # See MIN_TASK_COUNT comment above: 1 task is a single point of
+            # failure, so this starts at the same floor the autoscaling
+            # policy below enforces.
+            desired_count=MIN_TASK_COUNT,
             # Public, HTTP-only ALB: the frontend (Next.js/Express) is
             # deployed on a separate hosting platform, a separate cloud with
             # no private network path into this AWS VPC, so an internal ALB
@@ -226,6 +239,26 @@ class RagApiStack(Stack):
                 container_port=8000,
                 secrets=ecs_secrets,
             ),
+        )
+
+        # Target-tracking autoscaling on CPU utilization. CPU is chosen over
+        # ALB-request-count-per-target because this service's cost driver is
+        # mostly compute-bound work (embedding calls, PDF parsing during
+        # ingestion) rather than raw request volume, and CPU tracking needs
+        # no extra ALB request-count metric wiring - it works directly off
+        # the ECS/Fargate task metrics already emitted. `min_capacity`
+        # matches `MIN_TASK_COUNT` above so the service never scales below
+        # the HA floor; `max_capacity` caps runaway scale-out cost during a
+        # demo.
+        scalable_target = service.service.auto_scale_task_count(
+            min_capacity=MIN_TASK_COUNT,
+            max_capacity=MAX_TASK_COUNT,
+        )
+        scalable_target.scale_on_cpu_utilization(
+            "CpuScaling",
+            target_utilization_percent=60,
+            scale_in_cooldown=cdk.Duration.seconds(60),
+            scale_out_cooldown=cdk.Duration.seconds(60),
         )
 
         # ALB health check hits /healthz (no auth, no dependency checks - see
