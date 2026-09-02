@@ -130,6 +130,27 @@ describe("ChatView", () => {
     await waitFor(() => expect(screen.getByText("Hello! How can I help?")).toBeInTheDocument());
   });
 
+  it("constrains the root and message list to min-h-0 so only the list scrolls, not the page", async () => {
+    installFetchMock({ messages: { ok: true, body: seedMessages } });
+
+    const { container } = renderWithClient(<ChatView />);
+
+    await waitFor(() => expect(screen.getByText("Hello! How can I help?")).toBeInTheDocument());
+
+    // Regression guard for the flexbox min-height gotcha: without `min-h-0`
+    // on both the root flex column and the scrollable messages panel, a
+    // `flex-1` child never shrinks below its content size, so the ancestor
+    // chain (up through AppLayout's <main>) grows/scrolls at the page level
+    // instead of the intended inner panel handling the scroll.
+    const root = container.firstChild as HTMLElement;
+    expect(root).toHaveClass("flex", "flex-col", "h-full", "min-h-0");
+
+    const messagesPanel = screen.getByText("Hello! How can I help?").closest(
+      ".overflow-y-auto"
+    ) as HTMLElement;
+    expect(messagesPanel).toHaveClass("flex-1", "min-h-0", "overflow-y-auto");
+  });
+
   it("shows the no-documents callout when there are no processed documents", async () => {
     installFetchMock({
       messages: { ok: true, body: seedMessages },
