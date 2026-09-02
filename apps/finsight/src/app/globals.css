@@ -126,6 +126,8 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
@@ -165,11 +167,11 @@
   --chart-3: 41 87% 56%;
   --chart-4: 291 47% 51%;
   --chart-5: 11 90% 60%;
-  --sidebar: 222 47% 11%;
-  --sidebar-foreground: 220 20% 80%;
-  --sidebar-border: 222 40% 18%;
-  --sidebar-primary: 231 62% 65%;
-  --sidebar-muted: 222 40% 20%;
+  --sidebar: 220 20% 95%;
+  --sidebar-foreground: 222 47% 20%;
+  --sidebar-border: 220 13% 88%;
+  --sidebar-primary: 231 62% 55%;
+  --sidebar-muted: 220 15% 89%;
 }
 
 .dark {
@@ -222,15 +224,15 @@ body {
 
 @keyframes drift-a {
   0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(4%, -6%) scale(1.08); }
+  50% { transform: translate(14%, -18%) scale(1.15); }
 }
 @keyframes drift-b {
   0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(-3%, 3%) scale(0.96); }
+  50% { transform: translate(-16%, 12%) scale(0.9); }
 }
 @keyframes drift-c {
   0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(3%, 4%) scale(1.05); }
+  50% { transform: translate(12%, 15%) scale(1.12); }
 }
 .animate-blob-a { animation: drift-a 22s ease-in-out infinite; }
 .animate-blob-b { animation: drift-b 28s ease-in-out infinite; animation-delay: -6s; }
