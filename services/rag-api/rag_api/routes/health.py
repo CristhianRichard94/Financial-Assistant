@@ -33,10 +33,14 @@ every health-check interval, on every task, indefinitely.
 
 from __future__ import annotations
 
+import concurrent.futures
 from typing import Any
 
 import rag_pipeline
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Depends, Response
+
+from rag_api.config import READYZ_SUPABASE_TIMEOUT_SECONDS
+from rag_api.rate_limiter import require_readyz_rate_limit
 
 router = APIRouter()
 
@@ -47,14 +51,14 @@ router = APIRouter()
 # check only cares that the query executes at all, not what it returns.
 _READYZ_PROBE_USER_ID = "00000000-0000-0000-0000-000000000000"
 
-
 @router.get("/healthz")
 def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
 def _check_supabase() -> None:
-    """Run a trivial query against Supabase to prove connectivity/auth.
+    """Run a trivial, time-bounded query against Supabase to prove
+    connectivity/auth.
 
     Reuses `rag_pipeline.list_documents` (called as `rag_pipeline.<name>`,
     same module-qualified-attribute convention as
@@ -64,11 +68,41 @@ def _check_supabase() -> None:
     route in this service already runs, so no new table/permission is needed
     purely for this check, and it stays a single indexed lookup rather than
     an unbounded scan.
+
+    Bounded to `READYZ_SUPABASE_TIMEOUT_SECONDS`: without a timeout, a
+    Supabase instance that is merely slow (rather than erroring outright)
+    would leave this call - and the request thread waiting on it - blocked
+    for however long the underlying HTTP client's default timeout is, which
+    can be far longer than callers of `/readyz` (the ALB target group health
+    check) are willing to wait. `list_documents` itself takes no timeout
+    parameter, and this route handler is a sync `def` already running in
+    FastAPI's own threadpool, so the call is submitted to a fresh,
+    single-use, single-worker `ThreadPoolExecutor` (created and torn down
+    per call, not shared across requests - a shared pool would let one slow
+    request's still-running probe thread starve every other concurrent
+    `/readyz` request's own probe behind it in the same queue) and bounded
+    via `Future.result(timeout=)`. `concurrent.futures.TimeoutError`
+    propagates to `readyz()` below exactly like any other failure from
+    `rag_pipeline.list_documents` itself - both are caught by the same
+    broad `except Exception` there. The submitted call itself is not
+    cancelled on timeout (the underlying HTTP client call has no cooperative
+    cancellation hook); it's simply left to finish or fail on its own
+    timeline in the background thread (the executor is shut down with
+    `wait=False`, so tearing it down here doesn't block on that), and its
+    result is discarded - acceptable here since this is a cheap,
+    side-effect-free read.
     """
-    rag_pipeline.list_documents(_READYZ_PROBE_USER_ID)
+    executor = concurrent.futures.ThreadPoolExecutor(
+        max_workers=1, thread_name_prefix="readyz-supabase-probe"
+    )
+    try:
+        future = executor.submit(rag_pipeline.list_documents, _READYZ_PROBE_USER_ID)
+        future.result(timeout=READYZ_SUPABASE_TIMEOUT_SECONDS)
+    finally:
+        executor.shutdown(wait=False)
 
 
-@router.get("/readyz")
+@router.get("/readyz", dependencies=[Depends(require_readyz_rate_limit)])
 def readyz(response: Response) -> dict[str, Any]:
     checks: dict[str, str] = {}
     healthy = True
@@ -77,14 +111,16 @@ def readyz(response: Response) -> dict[str, Any]:
         _check_supabase()
         checks["supabase"] = "ok"
     except Exception:  # noqa: BLE001 - deliberately broad: any failure
-        # reaching/querying Supabase means this task isn't ready, regardless
-        # of the specific exception type the client library raises. The
-        # exception's own message is never included in the response body -
-        # it can embed connection details (see rag_pipeline.supabase_client,
-        # which is built from SUPABASE_URL/SUPABASE_SERVICE_KEY) that must
-        # never leak into an unauthenticated response (this route, like
-        # /healthz, is intentionally reachable without X-Internal-Api-Key so
-        # the ALB can call it).
+        # reaching/querying Supabase (including a `_check_supabase` timeout,
+        # which raises `concurrent.futures.TimeoutError`, itself an
+        # `Exception` subclass) means this task isn't ready, regardless of
+        # the specific exception type. The exception's own message is never
+        # included in the response body - it can embed connection details
+        # (see rag_pipeline.supabase_client, which is built from
+        # SUPABASE_URL/SUPABASE_SERVICE_KEY) that must never leak into an
+        # unauthenticated response (this route, like /healthz, is
+        # intentionally reachable without X-Internal-Api-Key so the ALB can
+        # call it).
         healthy = False
         checks["supabase"] = "error"
 
