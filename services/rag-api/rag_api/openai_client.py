@@ -20,6 +20,7 @@ from openai import OpenAI
 from rag_pipeline.search import SearchResult
 
 from rag_api.config import RagApiSettings
+from rag_api.pii_guard import redact_sensitive_numbers
 from rag_api.schemas import SourceOut
 
 logger = logging.getLogger(__name__)
@@ -164,6 +165,14 @@ def ask_openai(
     Returns (answer_text, sources), where sources are the unique
     filename/similarity pairs from `results` (in their original ranked order).
 
+    Before being returned, `answer_text` is passed through
+    `rag_api.pii_guard.redact_sensitive_numbers`, a deterministic output
+    guardrail that redacts full card/account-number-like and SSN-like
+    digit sequences the model may have echoed from the retrieved excerpts.
+    This runs on every generated answer regardless of caller (both the
+    plain /query route and the agentic /query/agent flow's generate_node
+    call through here), so it's the single choke point for this check.
+
     Raises AnswerRefusalError if the model's response is withheld by OpenAI's
     content filter (finish_reason == "content_filter").
 
@@ -197,6 +206,8 @@ def ask_openai(
             "The model returned an empty answer (finish_reason="
             f"{choice.finish_reason!r})."
         )
+
+    answer = redact_sensitive_numbers(answer)
 
     sources = [
         SourceOut(filename=result.filename, similarity=result.similarity)
