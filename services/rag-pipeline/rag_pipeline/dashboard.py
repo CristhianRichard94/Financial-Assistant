@@ -21,6 +21,7 @@ from typing import Any
 
 from rag_pipeline.config import Settings, load_settings
 from rag_pipeline.dashboard_cache import cached_activity, cached_summary
+from rag_pipeline.retry import execute_with_retry
 from rag_pipeline.supabase_client import get_supabase_client
 
 _DEFAULT_ACTIVITY_LIMIT = 20
@@ -85,13 +86,12 @@ def _previous_month_same_span(today: date) -> tuple[date, date]:
 def _fetch_transactions_in_range(
     supabase: Any, user_id: str, start: date, end: date
 ) -> list[dict[str, Any]]:
-    response = (
+    response = execute_with_retry(
         supabase.table("transactions")
         .select("*")
         .eq("user_id", user_id)
         .gte("occurred_on", start.isoformat())
         .lte("occurred_on", end.isoformat())
-        .execute()
     )
     return response.data
 
@@ -135,15 +135,15 @@ def _compute_dashboard_summary(
     current_net = current_income + current_spending
     previous_net = previous_income + previous_spending
 
-    documents_response = (
-        supabase.table("documents").select("*").eq("user_id", user_id).execute()
+    documents_response = execute_with_retry(
+        supabase.table("documents").select("*").eq("user_id", user_id)
     )
     all_documents = documents_response.data
     total_document_count = len(all_documents)
     document_count = sum(1 for doc in all_documents if doc.get("status") == "completed")
 
-    transactions_response = (
-        supabase.table("transactions").select("*").eq("user_id", user_id).execute()
+    transactions_response = execute_with_retry(
+        supabase.table("transactions").select("*").eq("user_id", user_id)
     )
     all_transactions = transactions_response.data
     transaction_count = len(all_transactions)
@@ -206,13 +206,12 @@ def _compute_recent_activity(
     settings = settings or load_settings()
     supabase = get_supabase_client(settings.supabase_url, settings.supabase_service_key)
 
-    response = (
+    response = execute_with_retry(
         supabase.table("transactions")
         .select("*")
         .eq("user_id", user_id)
         .order("occurred_on", desc=True)
         .limit(limit)
-        .execute()
     )
     return [
         TransactionRecord(
