@@ -9,8 +9,12 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from rag_api.config import MAX_UPLOAD_BYTES
-from rag_api.middleware import ContentLengthLimitMiddleware
+from rag_api.middleware import ContentLengthLimitMiddleware, RequestIdMiddleware
 from rag_api.routes import dashboard, documents, health, query
+from logging_config import configure_logging
+
+
+configure_logging()  # must be called before any log messages are emitted
 
 app = FastAPI(
     title="FinSight RAG API",
@@ -39,6 +43,10 @@ app = FastAPI(
 # and this is a generous enough cap that it never affects the small JSON
 # bodies the other routes accept.
 app.add_middleware(ContentLengthLimitMiddleware, max_bytes=MAX_UPLOAD_BYTES)
+
+# RequestIdMiddleware is applied last, so it runs first: it generates a
+# request ID and sets it in the request context before any other middleware
+app.add_middleware(RequestIdMiddleware)
 
 
 # health.router is deliberately mounted without the internal-api-key

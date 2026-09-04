@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import { safeRedirect } from "@/lib/safeRedirect";
+import { getOrCreateRequestId } from "./lib/requestId";
 
 const PROTECTED_PREFIXES = ["/dashboard", "/chat", "/documents"];
 
@@ -12,6 +13,10 @@ export async function middleware(request: NextRequest) {
   // Always refresh the session cookie first, per the @supabase/ssr App
   // Router pattern - this keeps the user signed in across Server Component
   // renders even when nothing below needs to read `user`.
+  const requestId = getOrCreateRequestId();
+
+  request.headers.set("x-request-id", requestId);
+
   const { supabaseResponse, user } = await updateSession(request);
 
   const { pathname, search } = request.nextUrl;
@@ -19,9 +24,13 @@ export async function middleware(request: NextRequest) {
   if (isProtectedPath(pathname) && !user) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("redirect", safeRedirect(`${pathname}${search}`));
-    return NextResponse.redirect(loginUrl);
+    const response = NextResponse.redirect(loginUrl);
+    response.headers.set("x-request-id", requestId);
+
+  return response;
   }
 
+  supabaseResponse.headers.set("x-request-id", requestId);
   return supabaseResponse;
 }
 

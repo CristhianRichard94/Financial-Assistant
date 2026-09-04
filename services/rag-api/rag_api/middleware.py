@@ -1,3 +1,4 @@
+from request_context import request_id_var, user_id_var
 """ASGI middleware providing a cheap, pre-parsing defense against oversized
 request bodies.
 
@@ -8,6 +9,7 @@ body at all.
 """
 
 from __future__ import annotations
+import uuid
 
 from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
@@ -55,3 +57,37 @@ class ContentLengthLimitMiddleware:
                 return
 
         await self.app(scope, receive, send)
+
+class RequestIdMiddleware:
+    """Obtains and forwards request ID from the incoming request headers to the request context, so that
+    it can be used for logging and tracing purposes throughout the request lifecycle.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = Headers(scope=scope)
+        request_id = headers.get("x-request-id")
+        if request_id is None:
+            request_id = str(uuid.uuid4())
+
+        token = request_id_var.set(request_id)
+
+        async def send_with_request_id(message: dict) -> None:
+            if message["type"] == "http.response.start":
+                response_headers = list(message.get("headers", []))
+                response_headers.append(
+                    (b"x-request-id", request_id.encode("latin-1"))
+                )
+                message = {**message, "headers": response_headers}
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_with_request_id)
+        finally:
+            request_id_var.reset(token)

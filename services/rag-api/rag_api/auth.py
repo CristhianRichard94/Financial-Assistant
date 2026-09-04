@@ -34,6 +34,7 @@ from fastapi import Header, HTTPException, status
 
 from rag_api.config import load_rag_api_settings
 
+from request_context import user_id_var
 
 async def require_internal_api_key(
     x_internal_api_key: str | None = Header(default=None, alias="X-Internal-Api-Key"),
@@ -77,6 +78,7 @@ async def require_user_id(
         )
     try:
         uuid.UUID(x_user_id)
+        user_id_var.set(x_user_id)
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

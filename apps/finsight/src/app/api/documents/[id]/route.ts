@@ -9,6 +9,8 @@ export async function DELETE(
   const { user, response } = await requireUser();
   if (!user) return response;
 
+  const requestId = _req.headers.get("x-request-id");
+
   const { id } = await params;
   try {
     await deleteDocument(id, user.id);
@@ -17,7 +19,7 @@ export async function DELETE(
     if (error instanceof RagApiError && error.status === 404) {
       return NextResponse.json({ error: "document_not_found" }, { status: 404 });
     }
-    console.error("Failed to delete document via rag-api:", error);
+    console.error(`[${requestId}] Failed to delete document via rag-api:`, error);
     return NextResponse.json({ error: "delete_document_failed" }, { status: 500 });
   }
 }
