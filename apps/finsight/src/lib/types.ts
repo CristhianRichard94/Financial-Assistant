@@ -34,3 +34,30 @@ export interface DashboardSummary {
   transactionCount: number;
   categoryBreakdown: CategorySpending[];
 }
+
+/**
+ * Document/chat types, formerly defined alongside the mock `store` in
+ * store.ts. The mock store implementation had no remaining consumers and was
+ * removed; these types are still used across the documents and chat
+ * features.
+ */
+
+export type DocumentStatus = "pending" | "processing" | "processed" | "error";
+export type DocumentType = "pdf" | "csv" | "image";
+
+export interface Document {
+  id: string;
+  name: string;
+  type: DocumentType;
+  size: number;
+  status: DocumentStatus;
+  uploadedAt: string;
+  errorMessage?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+}

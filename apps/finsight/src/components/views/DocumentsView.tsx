@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { cn, formatDate, formatFileSize } from "@/lib/utils";
-import type { Document } from "@/lib/store";
+import type { Document } from "@/lib/types";
 
 /** Maps a server-returned machine-readable error code (see the API route
  * handlers under `src/app/api/documents/`) to a translated user-facing

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { queryRag } from "@/lib/ragApiClient";
 import { requireUser } from "@/lib/auth/requireUser";
 import { createClient } from "@/lib/supabase/server";
-import type { ChatMessage } from "@/lib/store";
+import type { ChatMessage } from "@/lib/types";
 
 interface ChatMessageRow {
   id: string;

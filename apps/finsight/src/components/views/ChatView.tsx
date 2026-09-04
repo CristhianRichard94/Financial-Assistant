@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { cn, formatDate } from "@/lib/utils";
 import Link from "next/link";
-import type { ChatMessage, Document } from "@/lib/store";
+import type { ChatMessage, Document } from "@/lib/types";
 
 type OptimisticStatus = "pending" | "failed";
 
