@@ -8,6 +8,7 @@ from typing import Any
 
 from rag_pipeline.config import DEFAULT_MATCH_COUNT, Settings, load_settings
 from rag_pipeline.embeddings import embed_text
+from rag_pipeline.retry import execute_with_retry
 from rag_pipeline.supabase_client import get_supabase_client
 
 
@@ -62,19 +63,21 @@ def search(
     candidate_pool = min(k * 4, 40)
 
     supabase = get_supabase_client(settings.supabase_url, settings.supabase_service_key)
-    response = supabase.rpc(
-        "match_document_chunks_hybrid",
-        {
-            "query_embedding": query_embedding,
-            "query_text": query,
-            "match_count": k,
-            "p_user_id": user_id,
-            "p_candidate_pool": candidate_pool,
-            "p_date_from": date_from,
-            "p_date_to": date_to,
-            "p_document_type": document_type,
-        },
-    ).execute()
+    response = execute_with_retry(
+        supabase.rpc(
+            "match_document_chunks_hybrid",
+            {
+                "query_embedding": query_embedding,
+                "query_text": query,
+                "match_count": k,
+                "p_user_id": user_id,
+                "p_candidate_pool": candidate_pool,
+                "p_date_from": date_from,
+                "p_date_to": date_to,
+                "p_document_type": document_type,
+            },
+        )
+    )
 
     return [
         SearchResult(

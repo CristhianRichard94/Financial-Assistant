@@ -261,10 +261,15 @@ class RagApiStack(Stack):
             scale_out_cooldown=cdk.Duration.seconds(60),
         )
 
-        # ALB health check hits /healthz (no auth, no dependency checks - see
-        # rag_api/routes/health.py).
+        # ALB target group health check hits /readyz, not /healthz: /healthz
+        # only proves the process is up (used for the ECS container health
+        # check instead - ecs_patterns.ApplicationLoadBalancedFargateService
+        # doesn't set one here, so ECS falls back to the Docker image's own
+        # HEALTHCHECK if any), while /readyz additionally verifies this task
+        # can actually reach Supabase before the ALB routes traffic to it -
+        # see rag_api/routes/health.py for what each endpoint checks and why.
         service.target_group.configure_health_check(
-            path="/healthz",
+            path="/readyz",
             healthy_http_codes="200",
         )
 

@@ -53,6 +53,27 @@ ALLOWED_EXTENSIONS = {".pdf", ".csv", ".jpg", ".jpeg", ".png"}
 QUERY_RATE_LIMIT_PER_MINUTE = 20
 UPLOAD_RATE_LIMIT_PER_MINUTE = 5
 
+# Global (not per-user - /readyz is unauthenticated, see
+# rag_api.rate_limiter's docstring) rate limit for /readyz, expressed as a
+# request count within a 1-second trailing window. Deliberately generous
+# relative to the ALB's own health-check cadence (every ~30s per target per
+# infra/rag_api_stack.py) so normal health checks - including from multiple
+# tasks/AZs polling concurrently - are never throttled, while still capping
+# the rate an abusive caller can force real Supabase round-trips at (see
+# health.py's `_check_supabase`). Overridable via READYZ_RATE_LIMIT_PER_SECOND
+# for the same reasons as QUERY_RATE_LIMIT_PER_MINUTE/
+# UPLOAD_RATE_LIMIT_PER_MINUTE above.
+READYZ_RATE_LIMIT_PER_SECOND = 5
+
+# Timeout (seconds) applied to the Supabase probe call in /readyz
+# (health.py's `_check_supabase`). Without a bound, a Supabase instance that
+# is slow rather than erroring outright would leave `/readyz` hanging for
+# however long the underlying HTTP client's default timeout is, which could
+# be well beyond the ALB's own health-check timeout - keeping this short
+# means a slow-but-not-dead Supabase gets treated as not-ready quickly
+# instead of blocking the request/thread indefinitely.
+READYZ_SUPABASE_TIMEOUT_SECONDS = 3.0
+
 # Default path for the agent's LangGraph checkpointer (see
 # rag_api/agent/graph.py) to persist conversation state. SQLite-file-backed
 # rather than in-memory so conversation history survives across requests
@@ -91,6 +112,7 @@ class RagApiSettings:
     agent_checkpoint_db_url: str | None = None
     query_rate_limit_per_minute: int = QUERY_RATE_LIMIT_PER_MINUTE
     upload_rate_limit_per_minute: int = UPLOAD_RATE_LIMIT_PER_MINUTE
+    readyz_rate_limit_per_second: int = READYZ_RATE_LIMIT_PER_SECOND
 
 
 def _require_env(name: str) -> str:
@@ -146,5 +168,8 @@ def load_rag_api_settings() -> RagApiSettings:
         ),
         upload_rate_limit_per_minute=_int_env(
             "UPLOAD_RATE_LIMIT_PER_MINUTE", UPLOAD_RATE_LIMIT_PER_MINUTE
+        ),
+        readyz_rate_limit_per_second=_int_env(
+            "READYZ_RATE_LIMIT_PER_SECOND", READYZ_RATE_LIMIT_PER_SECOND
         ),
     )
