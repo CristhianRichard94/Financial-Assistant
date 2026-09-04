@@ -9,11 +9,11 @@ export async function DELETE(
   const { user, response } = await requireUser();
   if (!user) return response;
 
-  const requestId = _req.headers.get("x-request-id");
+  const requestId = _req.headers.get("x-request-id") ?? "-";
 
   const { id } = await params;
   try {
-    await deleteDocument(id, user.id);
+    await deleteDocument(id, user.id, requestId);
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     if (error instanceof RagApiError && error.status === 404) {

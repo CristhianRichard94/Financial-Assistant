@@ -4,11 +4,11 @@ import { requireUser } from "@/lib/auth/requireUser";
 
 export async function GET(request: Request) {
   const { user, response } = await requireUser();
-  const requestId = request.headers.get("x-request-id");
+  const requestId = request.headers.get("x-request-id") ?? "-";
   if (!user) return response;
 
   try {
-    const summary = await getDashboardSummary(user.id);
+    const summary = await getDashboardSummary(user.id, requestId);
     return NextResponse.json(summary);
   } catch (error) {
     console.error(`[${requestId}] Failed to load dashboard summary via rag-api:`, error);

@@ -45,7 +45,7 @@ describe("GET /api/dashboard/activity", () => {
       response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     });
 
-    const res = await GET();
+    const res = await GET(new Request("http://localhost/api/dashboard/activity", { headers: { "x-request-id": "test-request-id" } }));
     const body = await res.json();
 
     expect(res.status).toBe(401);
@@ -53,16 +53,16 @@ describe("GET /api/dashboard/activity", () => {
   });
 
   it("returns recent activity from rag-api as JSON", async () => {
-    const res = await GET();
+    const res = await GET(new Request("http://localhost/api/dashboard/activity", { headers: { "x-request-id": "test-request-id" } }));
     const body = await res.json();
 
     expect(res.status).toBe(200);
     expect(body).toEqual(ACTIVITY);
-    expect(getDashboardActivity).toHaveBeenCalledWith(TEST_USER.id);
+    expect(getDashboardActivity).toHaveBeenCalledWith(TEST_USER.id, "test-request-id");
   });
 
   it("returns a list of transactions with the expected shape", async () => {
-    const res = await GET();
+    const res = await GET(new Request("http://localhost/api/dashboard/activity", { headers: { "x-request-id": "test-request-id" } }));
     const body = await res.json();
 
     expect(Array.isArray(body)).toBe(true);
@@ -78,7 +78,7 @@ describe("GET /api/dashboard/activity", () => {
   it("passes through the rag-api error status on failure", async () => {
     vi.mocked(getDashboardActivity).mockRejectedValue(new RagApiError(502, "boom"));
 
-    const res = await GET();
+    const res = await GET(new Request("http://localhost/api/dashboard/activity", { headers: { "x-request-id": "test-request-id" } }));
     const body = await res.json();
 
     expect(res.status).toBe(502);

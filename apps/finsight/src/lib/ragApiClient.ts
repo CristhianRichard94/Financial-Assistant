@@ -1,5 +1,4 @@
 import type { Document, DashboardSummary, Transaction } from "@/lib/types";
-import { getOrCreateRequestId } from "./requestId";
 
 /**
  * Server-side client for the Python rag-api service (services/rag-api).
@@ -91,12 +90,21 @@ function getInternalApiKey(): string {
  * secret above, which only this Next.js server holds - by the time any
  * caller of this module reaches here, it must already have verified the
  * real session itself (see `src/lib/auth/requireUser.ts`). Never call these
- * functions with a `userId` that hasn't been independently verified. */
-function internalAuthHeaders(userId: string): Record<string, string> {
+ * functions with a `userId` that hasn't been independently verified.
+ *
+ * `requestId` must be the id from the inbound request (set by
+ * `middleware.ts` and read via `request.headers.get("x-request-id")` in
+ * the Route Handler) - not a freshly generated one - so that rag-api's
+ * logs can be correlated with this Next.js server's logs for the same
+ * request. */
+function internalAuthHeaders(
+  userId: string,
+  requestId: string,
+): Record<string, string> {
   return {
     "X-Internal-Api-Key": getInternalApiKey(),
     "X-User-Id": userId,
-    "X-Request-Id": getOrCreateRequestId(),
+    "X-Request-Id": requestId,
   };
 }
 
@@ -116,10 +124,13 @@ async function assertOk(res: Response, action: string): Promise<void> {
   }
 }
 
-export async function listDocuments(userId: string): Promise<Document[]> {
+export async function listDocuments(
+  userId: string,
+  requestId: string,
+): Promise<Document[]> {
   const res = await fetch(`${getBaseUrl()}/documents`, {
     cache: "no-store",
-    headers: internalAuthHeaders(userId),
+    headers: internalAuthHeaders(userId, requestId),
   });
   await assertOk(res, "list documents");
   return res.json();
@@ -128,10 +139,11 @@ export async function listDocuments(userId: string): Promise<Document[]> {
 export async function uploadDocument(
   formData: FormData,
   userId: string,
+  requestId: string,
 ): Promise<Document> {
   const res = await fetch(`${getBaseUrl()}/upload`, {
     method: "POST",
-    headers: internalAuthHeaders(userId),
+    headers: internalAuthHeaders(userId, requestId),
     body: formData,
   });
   await assertOk(res, "upload document");
@@ -141,20 +153,22 @@ export async function uploadDocument(
 export async function deleteDocument(
   id: string,
   userId: string,
+  requestId: string,
 ): Promise<void> {
   const res = await fetch(`${getBaseUrl()}/documents/${id}`, {
     method: "DELETE",
-    headers: internalAuthHeaders(userId),
+    headers: internalAuthHeaders(userId, requestId),
   });
   await assertOk(res, "delete document");
 }
 
 export async function getDashboardSummary(
   userId: string,
+  requestId: string,
 ): Promise<DashboardSummary> {
   const res = await fetch(`${getBaseUrl()}/dashboard/summary`, {
     cache: "no-store",
-    headers: internalAuthHeaders(userId),
+    headers: internalAuthHeaders(userId, requestId),
   });
   await assertOk(res, "load dashboard summary");
   return res.json();
@@ -162,10 +176,11 @@ export async function getDashboardSummary(
 
 export async function getDashboardActivity(
   userId: string,
+  requestId: string,
 ): Promise<Transaction[]> {
   const res = await fetch(`${getBaseUrl()}/dashboard/activity`, {
     cache: "no-store",
-    headers: internalAuthHeaders(userId),
+    headers: internalAuthHeaders(userId, requestId),
   });
   await assertOk(res, "load recent activity");
   return res.json();
@@ -174,12 +189,13 @@ export async function getDashboardActivity(
 export async function queryRag(
   question: string,
   userId: string,
+  requestId: string,
 ): Promise<QueryResult> {
   const res = await fetch(`${getBaseUrl()}/query`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...internalAuthHeaders(userId),
+      ...internalAuthHeaders(userId, requestId),
     },
     body: JSON.stringify({ question }),
   });

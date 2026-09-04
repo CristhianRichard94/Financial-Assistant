@@ -10,10 +10,10 @@ import {
 export async function GET(request: Request) {
   const { user, response } = await requireUser();
   if (!user) return response;
-  const requestId = request.headers.get("x-request-id");
+  const requestId = request.headers.get("x-request-id") ?? "-";
 
   try {
-    const documents = await listDocuments(user.id);
+    const documents = await listDocuments(user.id, requestId);
     return NextResponse.json(documents);
   } catch (error) {
     console.error(`[${requestId}] Failed to list documents via rag-api:`, error);
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
   // network. This guarantees the body is never fully assembled in memory
   // for an oversized request, regardless of what the header claimed.
   const boundedReq = boundRequestBody(req, MAX_REQUEST_BODY_BYTES);
-  const requestId = req.headers.get("x-request-id");
+  const requestId = req.headers.get("x-request-id") ?? "-";
 
   let formData: FormData;
   try {
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const doc = await uploadDocument(formData, user.id);
+    const doc = await uploadDocument(formData, user.id, requestId);
     return NextResponse.json(doc, { status: 201 });
   } catch (error) {
     console.error(`[${requestId}] Failed to upload document via rag-api:`, error);

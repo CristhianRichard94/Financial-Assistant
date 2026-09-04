@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "message_invalid" }, { status: 400 });
   }
-  const requestId = req.headers.get("x-request-id");
+  const requestId = req.headers.get("x-request-id") ?? "-";
 
   const supabase = await createClient();
 
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
 
   let replyContent = FALLBACK_REPLY;
   try {
-    const result = await queryRag(parsed.data.content, user.id);
+    const result = await queryRag(parsed.data.content, user.id, requestId);
     replyContent = result.answer;
   } catch (error) {
     console.error(`[${requestId}] Failed to query rag-api for chat reply:`, error);

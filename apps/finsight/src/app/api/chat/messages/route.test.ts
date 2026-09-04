@@ -68,7 +68,7 @@ describe("GET /api/chat/messages", () => {
       response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     });
 
-    const res = await GET();
+    const res = await GET(new Request("http://localhost/api/chat/messages", { headers: { "x-request-id": "test-request-id" } }));
     const body = await res.json();
 
     expect(res.status).toBe(401);
@@ -85,7 +85,7 @@ describe("GET /api/chat/messages", () => {
       makeSupabaseClient({ selectResult: { data: rows, error: null } }) as never
     );
 
-    const res = await GET();
+    const res = await GET(new Request("http://localhost/api/chat/messages", { headers: { "x-request-id": "test-request-id" } }));
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -102,7 +102,7 @@ describe("GET /api/chat/messages", () => {
     );
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const res = await GET();
+    const res = await GET(new Request("http://localhost/api/chat/messages", { headers: { "x-request-id": "test-request-id" } }));
 
     expect(res.status).toBe(500);
     consoleErrorSpy.mockRestore();
@@ -191,7 +191,8 @@ describe("POST /api/chat/messages", () => {
     });
     expect(queryRag).toHaveBeenCalledWith(
       "How much did I spend on groceries?",
-      TEST_USER.id
+      TEST_USER.id,
+      expect.any(String)
     );
   });
 
