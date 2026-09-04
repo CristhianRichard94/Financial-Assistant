@@ -29,7 +29,7 @@ from rag_api.schemas import DocumentOut
 from rag_api.status_mapping import document_record_to_out, infer_document_type
 
 logger = logging.getLogger(__name__)
-from request_context import request_id_var, user_id_var
+from rag_api.request_context import request_id_var, user_id_var
 router = APIRouter(dependencies=[Depends(require_internal_api_key)])
 
 # PDFs always start with this magic string. Used as a lightweight sniff so a

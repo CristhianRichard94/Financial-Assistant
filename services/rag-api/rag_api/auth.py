@@ -34,7 +34,7 @@ from fastapi import Header, HTTPException, status
 
 from rag_api.config import load_rag_api_settings
 
-from request_context import user_id_var
+from rag_api.request_context import user_id_var
 
 async def require_internal_api_key(
     x_internal_api_key: str | None = Header(default=None, alias="X-Internal-Api-Key"),

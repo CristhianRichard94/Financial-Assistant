@@ -80,6 +80,50 @@ def test_get_documents_502_does_not_leak_raw_exception_text(client, mocker):
     assert "postgres://user:pass@host/db" not in detail
 
 
+def test_upload_document_background_ingestion_logs_request_id(client, mocker, caplog):
+    """Regression test: the background ingestion task must log under the
+    same request_id the inbound request carried, even though it runs after
+    the response has been sent. JsonLogFormatter reads request_id_var at
+    log-emit time rather than storing it on the record, so we snapshot the
+    contextvar onto each record via a logging.Filter at emit time - reading
+    it back from caplog's records after the request completes (when the
+    contextvar has already been reset) would silently see the wrong value.
+    """
+    import logging
+
+    request_id = "request-123"
+    mocker.patch("rag_pipeline.create_pending_document", return_value="doc-1")
+    mocker.patch("rag_api.routes.documents.load_pipeline_settings", return_value=object())
+    mocker.patch("rag_pipeline.process_document", side_effect=RuntimeError("boom"))
+    mocker.patch("rag_pipeline.mark_document_failed", return_value=None)
+
+    from rag_api.request_context import request_id_var
+
+    def _snapshot_request_id(record):
+        record.captured_request_id = request_id_var.get()
+        return True
+
+    snapshot_filter = logging.Filter()
+    snapshot_filter.filter = _snapshot_request_id
+    with caplog.at_level("INFO"):
+        caplog.handler.addFilter(snapshot_filter)
+        try:
+            response = client.post(
+                "/upload",
+                headers={"X-Request-ID": request_id},
+                files={"file": ("statement.pdf", b"%PDF-1.4", "application/pdf")},
+            )
+        finally:
+            caplog.handler.removeFilter(snapshot_filter)
+
+    assert response.status_code == 201
+    ingestion_logs = [
+        record for record in caplog.records if "ingestion" in record.getMessage().lower()
+    ]
+    assert ingestion_logs
+    assert all(record.captured_request_id == request_id for record in ingestion_logs)
+
+
 def test_delete_document_returns_204_when_deleted(client, mocker):
     mocker.patch("rag_pipeline.delete_document", return_value=True)
 

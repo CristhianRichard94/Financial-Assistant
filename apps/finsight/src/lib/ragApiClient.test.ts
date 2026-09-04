@@ -10,6 +10,7 @@ import {
 const BASE_URL = "http://localhost:8000";
 const INTERNAL_KEY = "test-key";
 const USER_ID = "11111111-1111-4111-8111-111111111111";
+const REQUEST_ID = "11111111-1111-4111-8111";
 
 function stubEnv() {
   vi.stubEnv("RAG_API_BASE_URL", BASE_URL);
@@ -101,7 +102,7 @@ describe("ragApiClient requests", () => {
       expect(fetchMock).toHaveBeenCalledWith(
         `${BASE_URL}/documents`,
         expect.objectContaining({
-          headers: { "X-Internal-Api-Key": INTERNAL_KEY, "X-User-Id": USER_ID },
+          headers: { "X-Internal-Api-Key": INTERNAL_KEY, "X-User-Id": USER_ID, "x-request-id": REQUEST_ID },
         })
       );
     });
@@ -176,7 +177,7 @@ describe("ragApiClient requests", () => {
         `${BASE_URL}/upload`,
         expect.objectContaining({
           method: "POST",
-          headers: { "X-Internal-Api-Key": INTERNAL_KEY, "X-User-Id": USER_ID },
+          headers: { "X-Internal-Api-Key": INTERNAL_KEY, "X-User-Id": USER_ID, "X-Request-Id": REQUEST_ID },
           body: form,
         })
       );
@@ -204,7 +205,7 @@ describe("ragApiClient requests", () => {
         `${BASE_URL}/documents/abc`,
         expect.objectContaining({
           method: "DELETE",
-          headers: { "X-Internal-Api-Key": INTERNAL_KEY, "X-User-Id": USER_ID },
+          headers: { "X-Internal-Api-Key": INTERNAL_KEY, "X-User-Id": USER_ID, "X-request-id": REQUEST_ID },
         })
       );
     });
@@ -240,6 +241,7 @@ describe("ragApiClient requests", () => {
             "Content-Type": "application/json",
             "X-Internal-Api-Key": INTERNAL_KEY,
             "X-User-Id": USER_ID,
+            "X-Request-Id": REQUEST_ID,
           },
           body: JSON.stringify({ question: "How much did I spend?" }),
         })

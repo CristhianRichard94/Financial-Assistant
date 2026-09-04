@@ -1,4 +1,3 @@
-from request_context import request_id_var, user_id_var
 """ASGI middleware providing a cheap, pre-parsing defense against oversized
 request bodies.
 
@@ -10,6 +9,8 @@ body at all.
 
 from __future__ import annotations
 import uuid
+
+from rag_api.request_context import request_id_var, user_id_var
 
 from starlette.datastructures import Headers
 from starlette.responses import JSONResponse

@@ -2,7 +2,7 @@
 
 import json
 import logging
-from request_context import request_id_var, user_id_var
+from rag_api.request_context import request_id_var, user_id_var
 
 
 class JsonLogFormatter(logging.Formatter):

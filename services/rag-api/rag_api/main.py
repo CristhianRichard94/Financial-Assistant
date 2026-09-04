@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from rag_api.config import MAX_UPLOAD_BYTES
 from rag_api.middleware import ContentLengthLimitMiddleware, RequestIdMiddleware
 from rag_api.routes import dashboard, documents, health, query
-from logging_config import configure_logging
+from rag_api.logging_config import configure_logging
 
 
 configure_logging()  # must be called before any log messages are emitted
