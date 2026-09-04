@@ -1,2 +1,8 @@
 aws-cdk-lib>=2.150.0
 constructs>=10.3.0
+
+# Test-only dependency, for `pytest tests/` against the CDK assertions in
+# tests/test_rag_api_stack.py (validates the synthesized CloudFormation
+# template - see that file for why this stack has no cdk-deploy-based
+# verification).
+pytest>=8.0.0

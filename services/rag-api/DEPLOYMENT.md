@@ -207,10 +207,21 @@ This stack is meant to be run only when actually needed (expected at most
 ~10 demos/month), not left up continuously - the ECS Fargate task, ALB, and
 CloudFront distribution all bill for the time they exist, and the Fargate
 task itself has no NAT Gateway in its path (see `task_subnets`/`Vpc` in
-`infra/rag_api_stack.py`), so there's no idle NAT cost either way. The
-prerequisites above (ECR/Docker, Secrets Manager secrets, CDK bootstrap) only
-need to be done once; after that, spinning the stack up and down per demo is
-just:
+`infra/rag_api_stack.py`), so there's no idle NAT cost either way.
+
+The service runs 2 tasks at all times, not 1 - `desired_count=1` was a single
+point of failure (any deploy, crash, or AZ blip dropped the backend to zero
+capacity until ECS rescheduled a replacement), so `infra/rag_api_stack.py`
+now defaults to `MIN_TASK_COUNT=2` across 2 AZs, with a CPU-utilization
+target-tracking autoscaling policy that scales out up to `MAX_TASK_COUNT=4`
+under load. This roughly doubles the Fargate compute cost versus the old
+single-task setup for the time the stack is up; given this is only run
+on-demand for demos, that tradeoff was accepted in favor of not having a
+single-task outage during a live demo.
+
+The prerequisites above (ECR/Docker, Secrets Manager secrets, CDK bootstrap)
+only need to be done once; after that, spinning the stack up and down per
+demo is just:
 
 ```bash
 # ~5-10 min before the demo:
