@@ -3,7 +3,7 @@ import { renderWithIntl as render, screen, waitFor } from "@/test/renderWithIntl
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider, onlineManager } from "@tanstack/react-query";
 import { ChatView } from "@/components/views/ChatView";
-import type { ChatMessage, Document } from "@/lib/store";
+import type { ChatMessage, Document } from "@/lib/types";
 
 vi.mock("sonner", () => ({
   toast: {

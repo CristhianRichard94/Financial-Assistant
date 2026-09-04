@@ -1,5 +1,4 @@
-import type { Document } from "@/lib/store";
-import type { DashboardSummary, Transaction } from "@/lib/types";
+import type { Document, DashboardSummary, Transaction } from "@/lib/types";
 
 /**
  * Server-side client for the Python rag-api service (services/rag-api).

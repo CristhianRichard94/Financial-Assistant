@@ -3,7 +3,7 @@ import { renderWithIntl as render, screen, waitFor } from "@/test/renderWithIntl
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { DocumentsView } from "@/components/views/DocumentsView";
-import type { Document } from "@/lib/store";
+import type { Document } from "@/lib/types";
 
 // NOTE: Full drag-and-drop file upload simulation through react-dropzone is
 // intentionally out of scope here - simulating native DataTransfer/drop

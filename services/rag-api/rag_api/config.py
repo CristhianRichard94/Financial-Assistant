@@ -90,6 +90,12 @@ READYZ_SUPABASE_TIMEOUT_SECONDS = 3.0
 DEFAULT_AGENT_CHECKPOINT_DB_PATH = "agent_checkpoints.sqlite"
 
 
+# `MissingEnvironmentVariable` and `_require_env` below intentionally
+# duplicate the (near-identical) definitions in
+# rag_pipeline/config.py rather than being imported from there - see this
+# module's top-level docstring: this file is kept free of an import-time
+# dependency on rag_pipeline on purpose, so this small duplication is
+# accepted rather than refactored away.
 class MissingEnvironmentVariable(RuntimeError):
     """Raised when a required environment variable is not set."""
 
