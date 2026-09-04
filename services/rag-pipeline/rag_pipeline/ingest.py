@@ -11,6 +11,7 @@ from rag_pipeline.config import EMBEDDING_DIMENSIONS, Settings, load_settings
 from rag_pipeline.dashboard_cache import invalidate_dashboard_cache
 from rag_pipeline.embeddings import embed_texts
 from rag_pipeline.parsing import parse_document
+from rag_pipeline.retry import execute_with_retry
 from rag_pipeline.supabase_client import get_supabase_client
 from rag_pipeline.transactions import parse_transactions_csv
 
@@ -69,16 +70,14 @@ def create_pending_document(
         # size_bytes from the /upload route) are preserved as-is.
         merged_metadata.setdefault("document_type", document_type)
 
-    document_row = (
-        supabase.table("documents")
-        .insert(
+    document_row = execute_with_retry(
+        supabase.table("documents").insert(
             {
                 "filename": filename,
                 "user_id": user_id,
                 "metadata": merged_metadata,
             }
         )
-        .execute()
     )
     # The new row bumps the dashboard summary's total_document_count
     # immediately (even before ingestion finishes), so the cache must be
@@ -115,9 +114,9 @@ def process_document(
 
     supabase = get_supabase_client(settings.supabase_url, settings.supabase_service_key)
 
-    supabase.table("documents").update({"status": "processing"}).eq(
-        "id", document_id
-    ).execute()
+    execute_with_retry(
+        supabase.table("documents").update({"status": "processing"}).eq("id", document_id)
+    )
 
     try:
         raw_text = parse_document(path, settings=settings)
@@ -149,14 +148,14 @@ def process_document(
             }
             for chunk, embedding in zip(chunks, embeddings)
         ]
-        supabase.table("document_chunks").insert(chunk_rows).execute()
+        execute_with_retry(supabase.table("document_chunks").insert(chunk_rows))
 
         if path.suffix.lower() == ".csv":
             _extract_and_store_transactions(supabase, document_id, path, user_id)
 
-        supabase.table("documents").update({"status": "completed"}).eq(
-            "id", document_id
-        ).execute()
+        execute_with_retry(
+            supabase.table("documents").update({"status": "completed"}).eq("id", document_id)
+        )
 
         # Ingestion just changed this user's transactions (for CSVs) and
         # this document's status/document_count bucket - the cached
@@ -219,7 +218,7 @@ def _extract_and_store_transactions(
         }
         for transaction in parsed
     ]
-    supabase.table("transactions").insert(transaction_rows).execute()
+    execute_with_retry(supabase.table("transactions").insert(transaction_rows))
 
 
 def _mark_failed_with_message(supabase: Any, document_id: str, message: str) -> None:
@@ -227,14 +226,16 @@ def _mark_failed_with_message(supabase: Any, document_id: str, message: str) -> 
     `metadata.error` message, preserving any other metadata keys already on
     the row (e.g. `size_bytes`, `document_type`) rather than clobbering them.
     """
-    existing = (
-        supabase.table("documents").select("metadata").eq("id", document_id).execute()
+    existing = execute_with_retry(
+        supabase.table("documents").select("metadata").eq("id", document_id)
     )
     merged_metadata = dict(existing.data[0]["metadata"]) if existing.data else {}
     merged_metadata["error"] = message
-    supabase.table("documents").update(
-        {"status": "failed", "metadata": merged_metadata}
-    ).eq("id", document_id).execute()
+    execute_with_retry(
+        supabase.table("documents")
+        .update({"status": "failed", "metadata": merged_metadata})
+        .eq("id", document_id)
+    )
 
 
 def mark_document_failed(document_id: str, settings: Settings | None = None) -> None:

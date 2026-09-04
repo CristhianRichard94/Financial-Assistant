@@ -8,17 +8,26 @@ back to.
 
 from __future__ import annotations
 
+import httpx
 from openai import OpenAI
 
 from rag_pipeline.config import EMBEDDING_DIMENSIONS, EMBEDDING_MODEL
 
 _client: OpenAI | None = None
 
+# See rag_api/openai_client.py's get_client for why timeout/max_retries are
+# set explicitly: openai-python already retries transient errors (timeouts,
+# connection errors, 429, 5xx) with backoff+jitter, and never retries 4xx -
+# but its default timeout (600s read) is far too long to fail fast enough
+# for callers that need a bounded budget.
+_REQUEST_TIMEOUT = httpx.Timeout(connect=5.0, read=20.0, write=20.0, pool=20.0)
+_MAX_RETRIES = 2
+
 
 def get_client(api_key: str) -> OpenAI:
     global _client
     if _client is None:
-        _client = OpenAI(api_key=api_key)
+        _client = OpenAI(api_key=api_key, timeout=_REQUEST_TIMEOUT, max_retries=_MAX_RETRIES)
     return _client
 
 

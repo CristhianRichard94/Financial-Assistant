@@ -226,7 +226,15 @@ healthy before demoing:
 
 ```bash
 curl https://<the printed domain>/healthz
+curl https://<the printed domain>/readyz
 ```
+
+`/healthz` is a bare liveness check (process is up). `/readyz` additionally
+verifies this task can reach Supabase, and is what the ALB's target group
+health check actually polls (see `infra/rag_api_stack.py`) - it returns 503
+with a small JSON body indicating which dependency failed if Supabase isn't
+reachable. See `rag_api/routes/health.py` for details, including why OpenAI
+reachability is intentionally not checked here.
 
 ```bash
 # Right after the demo:

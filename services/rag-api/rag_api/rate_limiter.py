@@ -235,6 +235,20 @@ class _SlidingWindowRateLimiter:
 _query_limiter = _SlidingWindowRateLimiter(namespace="query")
 _upload_limiter = _SlidingWindowRateLimiter(namespace="upload")
 
+# /readyz (rag_api/routes/health.py) is deliberately unauthenticated - it's
+# polled by the ALB's target group health check, which has no way to send
+# the X-Internal-Api-Key header - so it can't be keyed per-user like
+# _query_limiter/_upload_limiter above. Anyone who can reach the public
+# CloudFront distribution can hit it at an arbitrary rate, and every hit
+# triggers a real Supabase round-trip (see health.py's `_check_supabase`),
+# so this is a single global bucket (fixed key, shared across every caller)
+# rather than per-user, with its own short 1-second window: generous enough
+# not to interfere with the ALB's own health-check cadence (every ~30s per
+# infra/rag_api_stack.py) while still capping the worst case an abusive
+# caller can force onto Supabase.
+_READYZ_RATE_LIMIT_KEY = "readyz"
+_readyz_limiter = _SlidingWindowRateLimiter(window_seconds=1.0)
+
 
 def _enforce(limiter: _SlidingWindowRateLimiter, user_id: str, max_requests: int) -> None:
     retry_after_seconds = limiter.check(user_id, max_requests)
@@ -272,11 +286,27 @@ def require_upload_rate_limit(user_id: str = Depends(require_user_id)) -> None:
     _enforce(_upload_limiter, user_id, settings.upload_rate_limit_per_minute)
 
 
+def require_readyz_rate_limit() -> None:
+    """FastAPI dependency: enforce a global (not per-user - see
+    `_readyz_limiter`'s docstring above) request-rate limit on `/readyz`.
+
+    No `user_id` dependency here, unlike `require_query_rate_limit`/
+    `require_upload_rate_limit` above - `/readyz` is intentionally reachable
+    without authentication, so there is no verified `user_id` to key on.
+    Raises 429 with a `Retry-After` header once
+    `settings.readyz_rate_limit_per_second` requests have been made by
+    *anyone* within the trailing 1-second window.
+    """
+    settings = load_rag_api_settings()
+    _enforce(_readyz_limiter, _READYZ_RATE_LIMIT_KEY, settings.readyz_rate_limit_per_second)
+
+
 def reset_for_tests() -> None:
-    """Wipe both limiters entirely. Test-isolation helper only: since these
+    """Wipe all limiters entirely. Test-isolation helper only: since these
     limiters are process-global module state, tests that reuse the same
     `user_id` across cases (as the existing query/upload route test suites
     do) would otherwise see rate-limit state leak between tests within the
     same window."""
     _query_limiter.reset_for_tests()
     _upload_limiter.reset_for_tests()
+    _readyz_limiter.reset_for_tests()

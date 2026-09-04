@@ -16,10 +16,12 @@ import json
 import logging
 from dataclasses import dataclass
 
+import httpx
 from openai import OpenAI
 from rag_pipeline.search import SearchResult
 
 from rag_api.config import RagApiSettings
+from rag_api.pii_guard import redact_sensitive_numbers
 from rag_api.schemas import SourceOut
 
 logger = logging.getLogger(__name__)
@@ -75,11 +77,25 @@ class EmptyAnswerError(RuntimeError):
 
 _client: OpenAI | None = None
 
+# openai-python already retries transient errors itself (connection errors,
+# timeouts, HTTP 429, and 5xx) with its own exponential backoff+jitter - see
+# `openai._base_client.SyncAPIClient._should_retry`/`_calculate_retry_timeout`
+# - and never retries 4xx errors like auth/bad-request. That already covers
+# this issue's requirement for OpenAI calls without adding a dependency; the
+# only gap is configuration, not behavior: the library's *default* timeout
+# (connect=5s, read/write/pool=600s) is far too long to "fail fast enough"
+# for callers' existing graceful-degradation paths (e.g. rag_api's /query
+# fallback reply) if a request hangs. `timeout`/`max_retries` are set
+# explicitly below so a full retry cycle stays bounded to well under a
+# minute instead of tens of minutes.
+_REQUEST_TIMEOUT = httpx.Timeout(connect=5.0, read=20.0, write=20.0, pool=20.0)
+_MAX_RETRIES = 2  # 3 attempts total (1 initial + 2 retries), same cap used for Supabase retries
+
 
 def get_client(api_key: str) -> OpenAI:
     global _client
     if _client is None:
-        _client = OpenAI(api_key=api_key)
+        _client = OpenAI(api_key=api_key, timeout=_REQUEST_TIMEOUT, max_retries=_MAX_RETRIES)
     return _client
 
 
@@ -164,6 +180,14 @@ def ask_openai(
     Returns (answer_text, sources), where sources are the unique
     filename/similarity pairs from `results` (in their original ranked order).
 
+    Before being returned, `answer_text` is passed through
+    `rag_api.pii_guard.redact_sensitive_numbers`, a deterministic output
+    guardrail that redacts full card/account-number-like and SSN-like
+    digit sequences the model may have echoed from the retrieved excerpts.
+    This runs on every generated answer regardless of caller (both the
+    plain /query route and the agentic /query/agent flow's generate_node
+    call through here), so it's the single choke point for this check.
+
     Raises AnswerRefusalError if the model's response is withheld by OpenAI's
     content filter (finish_reason == "content_filter").
 
@@ -197,6 +221,8 @@ def ask_openai(
             "The model returned an empty answer (finish_reason="
             f"{choice.finish_reason!r})."
         )
+
+    answer = redact_sensitive_numbers(answer)
 
     sources = [
         SourceOut(filename=result.filename, similarity=result.similarity)
