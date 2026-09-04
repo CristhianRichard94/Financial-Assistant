@@ -87,7 +87,7 @@ describe("GET /api/documents", () => {
       response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     });
 
-    const res = await GET();
+    const res = await GET(new Request("http://localhost/api/documents", { headers: { "x-request-id": "test-request-id" } }));
     const body = await res.json();
 
     expect(res.status).toBe(401);
@@ -99,18 +99,18 @@ describe("GET /api/documents", () => {
     const docs = [{ id: "1", name: "a.pdf" }];
     vi.mocked(listDocuments).mockResolvedValue(docs as never);
 
-    const res = await GET();
+    const res = await GET(new Request("http://localhost/api/documents", { headers: { "x-request-id": "test-request-id" } }));
     const body = await res.json();
 
     expect(res.status).toBe(200);
     expect(body).toEqual(docs);
-    expect(listDocuments).toHaveBeenCalledWith(TEST_USER.id);
+    expect(listDocuments).toHaveBeenCalledWith(TEST_USER.id, "test-request-id");
   });
 
   it("maps a RagApiError status to the response status", async () => {
     vi.mocked(listDocuments).mockRejectedValue(new RagApiError(503, "unavailable"));
 
-    const res = await GET();
+    const res = await GET(new Request("http://localhost/api/documents", { headers: { "x-request-id": "test-request-id" } }));
     const body = await res.json();
 
     expect(res.status).toBe(503);
@@ -120,7 +120,7 @@ describe("GET /api/documents", () => {
   it("falls back to a 500 status for a non-RagApiError failure", async () => {
     vi.mocked(listDocuments).mockRejectedValue(new Error("boom"));
 
-    const res = await GET();
+    const res = await GET(new Request("http://localhost/api/documents", { headers: { "x-request-id": "test-request-id" } }));
 
     expect(res.status).toBe(500);
   });
@@ -224,7 +224,7 @@ describe("POST /api/documents", () => {
     expect(res.status).toBe(201);
     expect(body).toEqual(createdDoc);
     expect(uploadDocument).toHaveBeenCalledTimes(1);
-    expect(uploadDocument).toHaveBeenCalledWith(expect.any(FormData), TEST_USER.id);
+    expect(uploadDocument).toHaveBeenCalledWith(expect.any(FormData), TEST_USER.id, expect.any(String));
   });
 
   it("maps a RagApiError from uploadDocument to the response status", async () => {

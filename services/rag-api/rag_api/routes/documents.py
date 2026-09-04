@@ -29,7 +29,7 @@ from rag_api.schemas import DocumentOut
 from rag_api.status_mapping import document_record_to_out, infer_document_type
 
 logger = logging.getLogger(__name__)
-
+from rag_api.request_context import request_id_var, user_id_var
 router = APIRouter(dependencies=[Depends(require_internal_api_key)])
 
 # PDFs always start with this magic string. Used as a lightweight sniff so a
@@ -228,7 +228,7 @@ async def _stream_multipart_file(
     return file_state.filename, bytes(file_state.buffer)
 
 
-def _run_ingestion(document_id: str, tmp_path: str, user_id: str) -> None:
+def _run_ingestion(document_id: str, tmp_path: str, user_id: str, request_id) -> None:
     """Background task: parse/chunk/embed/store the uploaded file.
 
     `process_document` marks its own document row "failed" for failures that
@@ -240,6 +240,8 @@ def _run_ingestion(document_id: str, tmp_path: str, user_id: str) -> None:
     surfaced, since the frontend polls GET /documents specifically while
     status is "pending"/"processing".
     """
+    request_id_var.set(request_id)
+    user_id_var.set(user_id)
     try:
         pipeline_settings = load_pipeline_settings()
         rag_pipeline.process_document(
@@ -307,7 +309,7 @@ async def upload_document(
         tmp_file.write(contents)
         tmp_path = tmp_file.name
 
-    background_tasks.add_task(_run_ingestion, document_id, tmp_path, user_id)
+    background_tasks.add_task(_run_ingestion, document_id, tmp_path, user_id, request_id_var.get())
 
     return DocumentOut(
         id=document_id,

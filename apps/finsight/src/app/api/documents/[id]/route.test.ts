@@ -57,7 +57,7 @@ describe("DELETE /api/documents/[id]", () => {
     const res = await DELETE(req, { params });
 
     expect(res.status).toBe(204);
-    expect(deleteDocument).toHaveBeenCalledWith("abc123", TEST_USER.id);
+    expect(deleteDocument).toHaveBeenCalledWith("abc123", TEST_USER.id, expect.any(String));
   });
 
   it("maps a 404 RagApiError to a 404 response with a friendly message", async () => {

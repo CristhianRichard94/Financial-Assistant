@@ -48,7 +48,7 @@ describe("GET /api/dashboard/summary", () => {
       response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     });
 
-    const res = await GET();
+    const res = await GET(new Request("http://localhost/api/dashboard/summary", { headers: { "x-request-id": "test-request-id" } }));
     const body = await res.json();
 
     expect(res.status).toBe(401);
@@ -56,16 +56,16 @@ describe("GET /api/dashboard/summary", () => {
   });
 
   it("returns the dashboard summary from rag-api as JSON", async () => {
-    const res = await GET();
+    const res = await GET(new Request("http://localhost/api/dashboard/summary", { headers: { "x-request-id": "test-request-id" } }));
     const body = await res.json();
 
     expect(res.status).toBe(200);
     expect(body).toEqual(SUMMARY);
-    expect(getDashboardSummary).toHaveBeenCalledWith(TEST_USER.id);
+    expect(getDashboardSummary).toHaveBeenCalledWith(TEST_USER.id, "test-request-id");
   });
 
   it("includes the expected summary fields", async () => {
-    const res = await GET();
+    const res = await GET(new Request("http://localhost/api/dashboard/summary", { headers: { "x-request-id": "test-request-id" } }));
     const body = await res.json();
 
     expect(body).toMatchObject({
@@ -82,7 +82,7 @@ describe("GET /api/dashboard/summary", () => {
   it("passes through the rag-api error status on failure", async () => {
     vi.mocked(getDashboardSummary).mockRejectedValue(new RagApiError(502, "boom"));
 
-    const res = await GET();
+    const res = await GET(new Request("http://localhost/api/dashboard/summary", { headers: { "x-request-id": "test-request-id" } }));
     const body = await res.json();
 
     expect(res.status).toBe(502);

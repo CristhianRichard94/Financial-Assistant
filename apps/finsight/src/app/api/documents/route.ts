@@ -7,15 +7,16 @@ import {
   contentLengthExceedsLimit,
 } from "@/lib/boundedRequestBody";
 
-export async function GET() {
+export async function GET(request: Request) {
   const { user, response } = await requireUser();
   if (!user) return response;
+  const requestId = request.headers.get("x-request-id") ?? "-";
 
   try {
-    const documents = await listDocuments(user.id);
+    const documents = await listDocuments(user.id, requestId);
     return NextResponse.json(documents);
   } catch (error) {
-    console.error("Failed to list documents via rag-api:", error);
+    console.error(`[${requestId}] Failed to list documents via rag-api:`, error);
     const status = error instanceof RagApiError ? error.status : 500;
     return NextResponse.json({ error: "documents_list_failed" }, { status });
   }
@@ -48,6 +49,7 @@ export async function POST(req: NextRequest) {
   // network. This guarantees the body is never fully assembled in memory
   // for an oversized request, regardless of what the header claimed.
   const boundedReq = boundRequestBody(req, MAX_REQUEST_BODY_BYTES);
+  const requestId = req.headers.get("x-request-id") ?? "-";
 
   let formData: FormData;
   try {
@@ -56,7 +58,7 @@ export async function POST(req: NextRequest) {
     if (error instanceof BodyTooLargeError) {
       return NextResponse.json({ error: "upload_too_large" }, { status: 400 });
     }
-    console.error("Failed to parse upload request body:", error);
+    console.error(`[${requestId}] Failed to parse upload request body:`, error);
     return NextResponse.json({ error: "upload_invalid" }, { status: 400 });
   }
 
@@ -70,10 +72,10 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const doc = await uploadDocument(formData, user.id);
+    const doc = await uploadDocument(formData, user.id, requestId);
     return NextResponse.json(doc, { status: 201 });
   } catch (error) {
-    console.error("Failed to upload document via rag-api:", error);
+    console.error(`[${requestId}] Failed to upload document via rag-api:`, error);
     const status = error instanceof RagApiError ? error.status : 500;
     return NextResponse.json({ error: "upload_failed" }, { status });
   }

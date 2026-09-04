@@ -16,12 +16,12 @@ function toChatMessage(row: ChatMessageRow): ChatMessage {
   return { id: row.id, role: row.role, content: row.content, timestamp: row.created_at };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const { user, response } = await requireUser();
   if (!user) return response;
 
   const supabase = await createClient();
-
+  const requestId = request.headers.get("x-request-id");
   // No explicit `.eq("user_id", ...)` filter here on purpose: this request
   // uses the caller's own session (anon key + cookies), not a service-role
   // key, so the RLS policies on `chat_messages` (see
@@ -34,7 +34,7 @@ export async function GET() {
     .order("created_at", { ascending: true });
 
   if (error) {
-    console.error("Failed to load chat messages:", error);
+    console.error(`[${requestId}] Failed to load chat messages:`, error);
     return NextResponse.json({ error: "messages_load_failed" }, { status: 500 });
   }
 
@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "message_invalid" }, { status: 400 });
   }
+  const requestId = req.headers.get("x-request-id") ?? "-";
 
   const supabase = await createClient();
 
@@ -67,16 +68,16 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (userInsertError || !userRow) {
-    console.error("Failed to store user chat message:", userInsertError);
+    console.error(`[${requestId}] Failed to store user chat message:`, userInsertError);
     return NextResponse.json({ error: "message_send_failed" }, { status: 500 });
   }
 
   let replyContent = FALLBACK_REPLY;
   try {
-    const result = await queryRag(parsed.data.content, user.id);
+    const result = await queryRag(parsed.data.content, user.id, requestId);
     replyContent = result.answer;
   } catch (error) {
-    console.error("Failed to query rag-api for chat reply:", error);
+    console.error(`[${requestId}] Failed to query rag-api for chat reply:`, error);
   }
 
   const { data: assistantRow, error: assistantInsertError } = await supabase
@@ -86,7 +87,7 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (assistantInsertError || !assistantRow) {
-    console.error("Failed to store assistant chat message:", assistantInsertError);
+    console.error(`[${requestId}] Failed to store assistant chat message:`, assistantInsertError);
     return NextResponse.json({ error: "message_send_failed" }, { status: 500 });
   }
 

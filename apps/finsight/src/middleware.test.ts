@@ -79,6 +79,15 @@ describe("middleware", () => {
     expect(res).toBe(supabaseResponse);
   });
 
+  it("passes injects X-Request-id into the request and response headers", async() => {
+    const supabaseResponse = mockSession({ id: "user-1" });
+
+    const response = await middleware(makeRequest("/dashboard"));
+    expect(response).toBe(supabaseResponse);
+    expect(response.headers.get("x-request-id")).toBeTruthy();
+    expect(vi.mocked(updateSession).mock.calls[0][0].headers.get("x-request-id")).toBeTruthy();
+  })
+
   it("does not treat an unrelated path prefixed similarly as protected", async () => {
     const supabaseResponse = mockSession(null);
 
