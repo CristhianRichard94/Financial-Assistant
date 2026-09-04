@@ -1,4 +1,4 @@
-"""In-process, short-TTL cache for the Overview dashboard's aggregates.
+"""Short-TTL cache for the Overview dashboard's aggregates.
 
 `dashboard.get_dashboard_summary`/`get_recent_activity` each run several
 live Supabase queries (see dashboard.py's module docstring), all of which
@@ -7,37 +7,73 @@ This module adds a minimal per-user TTL cache in front of both, so rapid
 repeat loads (tab refocus, navigating back to Overview, React re-renders)
 within the TTL window don't re-hit Supabase.
 
-Deliberately a small hand-rolled dict-based cache (a dict keyed by cache key
-storing `(value, expires_at)`, using `time.monotonic()`) rather than pulling
-in `cachetools` or Redis - a single small cache like this doesn't warrant a
-new dependency.
+Originally (and still, by default) a small hand-rolled dict-based cache (a
+dict keyed by cache key storing `(value, expires_at)`, using
+`time.monotonic()`) rather than pulling in `cachetools` or Redis - a single
+small cache like this doesn't warrant a new dependency by itself. That
+in-process cache (`_TTLCache` below) is still exactly what's used when no
+shared store is configured (local dev, and every existing test in this
+suite), and is still guarded by a `threading.Lock` for the same reason as
+before: rag-api's route handlers here are sync `def`s, which FastAPI runs
+in a threadpool, so concurrent requests for the same user can race on the
+same cache slot.
 
-rag-api's route handlers here are sync `def`s, which FastAPI runs in a
-threadpool, so concurrent requests for the same user can race on the same
-cache slot; each cache's dict is guarded by a `threading.Lock` to keep that
-safe (never corrupting/interleaving reads and writes on the dict itself).
-This is a per-process cache: it does not coordinate across multiple worker
-processes/machines, so with more than one worker a write handled by one
-process won't invalidate another process's cached entry until that entry's
-TTL naturally expires. Acceptable for a 30s soft-caching layer, not a
-substitute for real cross-process invalidation.
+That in-process cache is a per-process cache: it does not coordinate across
+multiple worker processes/machines, so with more than one worker a write
+handled by one process won't invalidate another process's cached entry
+until that entry's TTL naturally expires - or, once this service is scaled
+to multiple Fargate tasks, a client can be served a stale answer indefinitely
+depending on which task happens to handle a given request, since each task's
+cache only ever sees its own process's writes/invalidations. See GitHub
+issue #16.
 
-Known limitation, accepted for now: both caches' dicts (entries,
-per-key generations, and - for the activity cache - per-prefix epochs)
-grow by one entry per distinct user (and, for activity's entries/
-generations, per distinct user/limit pair) ever seen by this process,
-with no eviction beyond TTL expiry replacing an existing entry in place -
-there's no cap or LRU eviction. For this app's expected user counts this
-is a small, bounded amount of memory per long-running process, not worth
-the added complexity of an eviction policy today; would need revisiting
-if the user base grows by orders of magnitude.
+`_HybridTTLCache` (used by the module-level `_summary_cache`/
+`_activity_cache` below) closes that gap: when `REDIS_URL` is configured
+(see `rag_pipeline.redis_support`), every `get_or_compute`/`invalidate`/
+`invalidate_prefix` call is served from a shared Redis SETEX'd key instead
+of this process's own dict, so all processes/tasks see the same cached
+value and the same invalidations. `redis-py` (already a new dependency
+added for this - see rag-pipeline/pyproject.toml) is the natural, official
+Redis client; nothing already in this project's dependency tree provides
+one. `REDIS_URL` is re-checked on every call (not frozen at import time),
+so a single running process transparently uses whichever backend is
+currently configured, and local dev/tests need zero setup to keep using the
+in-process fallback.
+
+Known, deliberately accepted limitation of the Redis-backed path: unlike
+the in-process `_TTLCache` (guarded end-to-end by a single `threading.Lock`
+per cache), the Redis path does not replicate `_TTLCache`'s per-key
+generation / per-prefix epoch guard against a `compute()` call racing a
+concurrent invalidation (see `_TTLCache.get_or_compute`'s docstring) - a
+`compute()` in flight when an `invalidate`/`invalidate_prefix` for the same
+key lands elsewhere can still write its (now-stale) result back with a
+fresh TTL. A fully race-proof cross-process version of that same guard
+would need a Redis transaction/Lua script keyed on a shared generation
+counter; not implemented here as this is still a bounded, self-healing
+staleness window (at most `TTL_SECONDS`), same order of risk this module
+already accepted for the multi-process case before Redis existed here at
+all - not a new regression, just not a full fix. Revisit if this proves to
+bite in practice.
+
+Known limitation, accepted for now (in-process fallback only): both
+in-process caches' dicts (entries, per-key generations, and - for the
+activity cache - per-prefix epochs) grow by one entry per distinct user
+(and, for activity's entries/generations, per distinct user/limit pair)
+ever seen by this process, with no eviction beyond TTL expiry replacing an
+existing entry in place - there's no cap or LRU eviction. For this app's
+expected user counts this is a small, bounded amount of memory per
+long-running process, not worth the added complexity of an eviction policy
+today; would need revisiting if the user base grows by orders of magnitude.
 """
 
 from __future__ import annotations
 
+import pickle
 import threading
 import time
 from typing import Callable, Generic, TypeVar
+
+from rag_pipeline import redis_support
 
 # Kept as a named constant so it's easy to tune later.
 TTL_SECONDS = 30.0
@@ -159,8 +195,83 @@ class _TTLCache(Generic[_T]):
             self._prefix_epochs.clear()
 
 
-_summary_cache: _TTLCache[object] = _TTLCache(TTL_SECONDS)
-_activity_cache: _TTLCache[object] = _TTLCache(TTL_SECONDS)
+class _HybridTTLCache(Generic[_T]):
+    """Wraps a `_TTLCache` (in-process fallback) and transparently serves
+    every call from Redis instead whenever `REDIS_URL` is configured (see
+    `rag_pipeline.redis_support.get_redis_client`), re-checked on every
+    call. See this module's docstring for the full rationale and the
+    accepted limitation of the Redis path (no cross-process generation/
+    epoch race guard).
+
+    `namespace` prefixes every Redis key this instance touches (e.g.
+    `"summary"`/`"activity"`), so the two module-level caches below never
+    collide with each other or with `rag_api.rate_limiter`'s own keys in
+    the same Redis instance.
+    """
+
+    def __init__(self, ttl_seconds: float, namespace: str) -> None:
+        self._ttl_seconds = ttl_seconds
+        self._namespace = namespace
+        self._local: _TTLCache[_T] = _TTLCache(ttl_seconds)
+
+    def _redis_key(self, key: str) -> bytes:
+        return f"dashcache:{self._namespace}:{key}".encode()
+
+    def get_or_compute(
+        self, key: str, compute: Callable[[], _T], prefix: str | None = None
+    ) -> _T:
+        client = redis_support.get_redis_client()
+        if client is None:
+            return self._local.get_or_compute(key, compute, prefix=prefix)
+
+        redis_key = self._redis_key(key)
+        cached = client.get(redis_key)
+        if cached is not None:
+            return pickle.loads(cached)
+
+        # Computed outside of any lock/transaction, same tradeoff as
+        # `_TTLCache.get_or_compute` (see its docstring) - and, unlike that
+        # local version, this path does not guard against a concurrent
+        # invalidation racing this compute() (documented module-level
+        # limitation above).
+        value = compute()
+        client.setex(redis_key, int(self._ttl_seconds), pickle.dumps(value))
+        return value
+
+    def invalidate(self, key: str) -> None:
+        client = redis_support.get_redis_client()
+        if client is None:
+            self._local.invalidate(key)
+            return
+        client.delete(self._redis_key(key))
+
+    def invalidate_prefix(self, prefix: str) -> None:
+        client = redis_support.get_redis_client()
+        if client is None:
+            self._local.invalidate_prefix(prefix)
+            return
+        # Mirrors _TTLCache.invalidate_prefix's "prefix itself, or
+        # prefix + ':' + anything" matching rule.
+        client.delete(self._redis_key(prefix))
+        scan_pattern = self._redis_key(f"{prefix}:*")
+        for redis_key in client.scan_iter(match=scan_pattern):
+            client.delete(redis_key)
+
+    def clear(self) -> None:
+        """Test-isolation helper only, mirroring `_TTLCache.clear`. Clears
+        both the in-process fallback and (if configured) every Redis key
+        under this instance's namespace."""
+        self._local.clear()
+        client = redis_support.get_redis_client()
+        if client is None:
+            return
+        scan_pattern = self._redis_key("*")
+        for redis_key in client.scan_iter(match=scan_pattern):
+            client.delete(redis_key)
+
+
+_summary_cache: _HybridTTLCache[object] = _HybridTTLCache(TTL_SECONDS, namespace="summary")
+_activity_cache: _HybridTTLCache[object] = _HybridTTLCache(TTL_SECONDS, namespace="activity")
 
 
 def cached_summary(user_id: str, compute: Callable[[], _T]) -> _T:

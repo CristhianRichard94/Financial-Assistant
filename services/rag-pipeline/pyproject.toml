@@ -15,6 +15,13 @@ dependencies = [
     "openai>=1.40.0",
     "supabase>=2.6.0",
     "python-dotenv>=1.0.0",
+    # Shared Redis client for rag_pipeline.redis_support, backing the
+    # optional cross-process store used by rag_pipeline.dashboard_cache and
+    # rag_api.rate_limiter once REDIS_URL is configured (see GitHub issue
+    # #16 - in-process state breaks once a service scales to more than one
+    # instance). No existing dependency here provides a Redis client;
+    # redis-py is the official, standard one.
+    "redis>=5.0.0",
     # Retry/backoff for Supabase (postgrest-py) calls (see rag_pipeline/
     # retry.py). Neither supabase-py's ClientOptions nor postgrest-py's
     # request builder expose any retry/backoff mechanism (only timeouts),
