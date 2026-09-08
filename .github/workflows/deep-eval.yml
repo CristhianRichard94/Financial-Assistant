@@ -1,0 +1,41 @@
+name: DeepEval
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+  pull_request:
+    types: [labeled]
+
+concurrency:
+  group: deepeval
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    if: github.event_name != 'pull_request' || github.event.label.name == 'needs-eval'
+    runs-on: ubuntu-latest
+    environment: deepeval-eval
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: services/rag-eval/pyproject.toml
+      - run: pip install -e services/rag-eval[dev]
+      - run: deepeval test run services/rag-eval/evals --output-folder eval-report
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
+          EVAL_USER_ID: ${{ secrets.EVAL_USER_ID }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: deepeval-report
+          path: eval-report/

@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      node: ${{ steps.filter.outputs.node }}
+      rag_api: ${{ steps.filter.outputs.rag_api }}
+      rag_pipeline: ${{ steps.filter.outputs.rag_pipeline }}
+      infra: ${{ steps.filter.outputs.infra }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            node:
+              - 'apps/**'
+              - 'lib/**'
+              - 'package.json'
+              - 'pnpm-workspace.yaml'
+              - 'pnpm-lock.yaml'
+            rag_api:
+              - 'services/rag-api/**'
+            rag_pipeline:
+              - 'services/rag-pipeline/**'
+            infra:
+              - 'services/rag-api/infra/**'
+
+  node:
+    needs: changes
+    if: needs.changes.outputs.node == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/cache@v4
+        with:
+          path: apps/finsight/.next/cache
+          key: nextjs-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/finsight/**/*.[jt]s', 'apps/finsight/**/*.[jt]sx') }}
+          restore-keys: |
+            nextjs-${{ hashFiles('pnpm-lock.yaml') }}-
+      - run: pnpm -r --if-present run lint
+      - run: pnpm run typecheck
+      - run: pnpm run build
+      - run: pnpm --filter @workspace/finsight test
+
+  rag-api:
+    needs: changes
+    if: needs.changes.outputs.rag_api == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: services/rag-api/pyproject.toml
+      - run: pip install -e services/rag-api[dev]
+      - run: pytest services/rag-api/tests
+
+  rag-pipeline:
+    needs: changes
+    if: needs.changes.outputs.rag_pipeline == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: services/rag-pipeline/pyproject.toml
+      - run: pip install -e services/rag-pipeline[dev]
+      - run: pytest services/rag-pipeline/tests
+
+  docker-build:
+    needs: changes
+    if: needs.changes.outputs.rag_api == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/rag-api/Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  cdk-synth:
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: services/rag-api/infra/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install -g aws-cdk
+      - run: pip install -r services/rag-api/infra/requirements.txt
+      - working-directory: services/rag-api/infra
+        run: cdk synth
