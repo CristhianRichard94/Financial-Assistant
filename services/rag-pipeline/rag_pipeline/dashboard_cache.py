@@ -69,7 +69,6 @@ today; would need revisiting if the user base grows by orders of magnitude.
 from __future__ import annotations
 
 import dataclasses
-import importlib
 import json
 import logging
 import threading
@@ -231,18 +230,36 @@ def _encode(value: Any) -> Any:
     return value
 
 
-def _resolve_dataclass(dotted_path: str) -> type:
-    module_name, _, qualname = dotted_path.rpartition(".")
-    module = importlib.import_module(module_name)
-    obj: Any = module
-    for part in qualname.split("."):
-        obj = getattr(obj, part)
-    return obj
+def _allowed_dataclasses() -> dict[str, type]:
+    """Explicit allowlist of the only dataclasses this cache ever stores,
+    keyed by the fully-qualified `module.qualname` string `_encode` tags
+    them with.
+
+    `_decode` resolves `__dataclass__` tags exclusively through this
+    allowlist rather than `importlib.import_module` + `getattr` on an
+    attacker-controlled dotted path pulled from untrusted Redis bytes -
+    resolving arbitrary dotted paths would let anyone able to write to the
+    configured Redis key space name *any* importable class (e.g.
+    `subprocess.Popen`) and get it instantiated with attacker-controlled
+    kwargs via `cls(**fields)`, which is an RCE gadget equivalent in impact
+    to the `pickle` RCE this module was changed away from (see the module
+    docstring / issue #32). Imported lazily, inside this function rather
+    than at module load time, to avoid a circular import: `dashboard.py`
+    imports `cached_summary`/`cached_activity` from this module, and these
+    are the dataclasses it defines.
+    """
+    from rag_pipeline.dashboard import CategoryBreakdown, DashboardSummary, TransactionRecord
+
+    allowed = (DashboardSummary, TransactionRecord, CategoryBreakdown)
+    return {f"{cls.__module__}.{cls.__qualname__}": cls for cls in allowed}
 
 
 def _decode(value: Any) -> Any:
     if isinstance(value, dict) and _DATACLASS_TAG in value:
-        cls = _resolve_dataclass(value[_DATACLASS_TAG])
+        tag = value[_DATACLASS_TAG]
+        cls = _allowed_dataclasses().get(tag)
+        if cls is None:
+            raise ValueError(f"Refusing to decode disallowed cached type: {tag!r}")
         fields = {name: _decode(field_value) for name, field_value in value["fields"].items()}
         return cls(**fields)
     if isinstance(value, list):

