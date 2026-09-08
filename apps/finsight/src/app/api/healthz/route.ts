@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { HealthCheckResponse } from "@workspace/api-zod";
+import { z } from "zod";
+
+const HealthCheckResponse = z.object({ status: z.literal("ok") });
 
 export async function GET() {
   const data = HealthCheckResponse.parse({ status: "ok" });
