@@ -146,10 +146,7 @@ Uses `@supabase/ssr` and `@supabase/supabase-js` for session handling on both se
 .
 ├── apps/
 │   └── finsight/           Next.js 15 frontend + API routes (the app itself)
-├── lib/
-│   ├── db/                 Drizzle schema/client (@workspace/db)
-│   ├── api-spec/           OpenAPI spec + orval codegen config
-│   └── api-zod/            Generated Zod schemas (@workspace/api-zod)
+
 ├── services/
 │   ├── rag-pipeline/       Python: parse → chunk → embed → store → search → aggregate (Supabase/pgvector)
 │   ├── rag-api/            Python: FastAPI wrapper over rag-pipeline + OpenAI synthesis, AWS CDK deploy artifacts

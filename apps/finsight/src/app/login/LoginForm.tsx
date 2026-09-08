@@ -9,6 +9,7 @@ import { BrandLockup } from "@/components/auth/BrandLockup";
 import { AnimatedGradientBackground } from "@/components/auth/AnimatedGradientBackground";
 import { createClient } from "@/lib/supabase/browser";
 import { safeRedirect } from "@/lib/safeRedirect";
+import Image from "next/image";
 
 export type LoginErrorReason = "cancelled" | "failed";
 
@@ -107,7 +108,12 @@ export function LoginForm({ error: initialError, redirectTo }: LoginFormProps) {
               </>
             ) : (
               <>
-                <img src="/google-logo.svg" alt="" width={18} height={18} />
+                <Image
+                  src="/google-logo.svg"
+                  alt="Sign in with google"
+                  width={18}
+                  height={18}
+                ></Image>
                 {t("signInWithGoogle")}
               </>
             )}
