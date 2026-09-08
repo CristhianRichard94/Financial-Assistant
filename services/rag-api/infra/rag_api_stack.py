@@ -59,6 +59,17 @@ SECRET_NAMES: dict[str, str] = {
     "OPENAI_API_KEY": "finsight/rag-api/OPENAI_API_KEY",
     "INTERNAL_API_KEY": "finsight/rag-api/INTERNAL_API_KEY",
     "AGENT_CHECKPOINT_DB_URL": "finsight/rag-api/AGENT_CHECKPOINT_DB_URL",
+    # Langfuse tracing (see rag_api/tracing.py) - optional at the app level
+    # (rag_api/config.py treats these as unset-tolerant, tracing just
+    # disables itself), but wired through Secrets Manager the same as every
+    # other credential here rather than a plaintext ecs environment var, for
+    # consistency and because LANGFUSE_SECRET_KEY is a real credential.
+    # LANGFUSE_HOST rides along in the same secret store purely to reuse
+    # this existing mechanism instead of adding a separate plaintext
+    # environment= block for one non-sensitive value.
+    "LANGFUSE_PUBLIC_KEY": "finsight/rag-api/LANGFUSE_PUBLIC_KEY",
+    "LANGFUSE_SECRET_KEY": "finsight/rag-api/LANGFUSE_SECRET_KEY",
+    "LANGFUSE_HOST": "finsight/rag-api/LANGFUSE_HOST",
 }
 
 # Task-count defaults for the ECS service. `desired_count=1` (the previous
