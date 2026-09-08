@@ -34,6 +34,7 @@ jobs:
   pip-audit:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         service: [rag-api, rag-pipeline, rag-eval]
     steps:
@@ -44,5 +45,8 @@ jobs:
           cache: pip
           cache-dependency-path: services/${{ matrix.service }}/pyproject.toml
       - run: pip install pip-audit
-      - run: pip install -e services/${{ matrix.service }}
+      - if: matrix.service == 'rag-eval'
+        run: pip install -e services/rag-pipeline -e services/rag-api -e services/rag-eval
+      - if: matrix.service != 'rag-eval'
+        run: pip install -e services/${{ matrix.service }}
       - run: pip-audit
