@@ -28,6 +28,13 @@ dependencies = [
     # services.
     "langgraph-checkpoint-postgres>=2.0.0",
     "psycopg[binary,pool]>=3.1.0",
+    # LLM observability/tracing (rag_api/tracing.py) for the OpenAI call
+    # sites in rag_api/openai_client.py and the LangGraph agent nodes in
+    # rag_api/agent/nodes.py - no existing dependency or stdlib feature
+    # covers this. Pinned to the 2.x line: 3.x/4.x are separate SDK
+    # generations (OTEL-based) with a different, incompatible API surface,
+    # not a drop-in upgrade.
+    "langfuse>=2.0.0,<3.0.0",
     # Local path dependency on the sibling rag-pipeline package. `{root:uri}`
     # is a Hatchling build-time context variable that expands to this
     # package's own directory as a file:// URI, so this resolves relative to

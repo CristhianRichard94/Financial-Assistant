@@ -18,6 +18,7 @@ from rag_api.openai_client import (
     check_groundedness,
     get_client,
 )
+from rag_api.tracing import TraceContext
 
 
 def _make_result(**overrides):
@@ -38,14 +39,28 @@ def _settings() -> RagApiSettings:
     )
 
 
-def _make_chat_response(content: str | None, finish_reason: str = "stop") -> SimpleNamespace:
+def _traced_settings() -> RagApiSettings:
+    return RagApiSettings(
+        openai_api_key="sk-test-key",
+        internal_api_key="test-internal-api-key",
+        langfuse_public_key="pk-test",
+        langfuse_secret_key="sk-lf-test",
+    )
+
+
+def _make_chat_response(
+    content: str | None,
+    finish_reason: str = "stop",
+    usage: SimpleNamespace | None = None,
+) -> SimpleNamespace:
     return SimpleNamespace(
         choices=[
             SimpleNamespace(
                 message=SimpleNamespace(content=content),
                 finish_reason=finish_reason,
             )
-        ]
+        ],
+        usage=usage,
     )
 
 
@@ -273,6 +288,192 @@ class TestCheckGroundednessEmptyContent:
 
         result = check_groundedness(
             "How much did I spend?", "You spent $50.", [_make_result()], _settings()
+        )
+
+        assert result.grounded is True
+
+
+class TestAskOpenaiTracing:
+    def test_records_a_generation_on_success(self, mocker):
+        record_generation = mocker.patch(
+            "rag_api.openai_client.tracing.record_generation"
+        )
+        mock_client = mocker.Mock()
+        usage = SimpleNamespace(prompt_tokens=12, completion_tokens=8, total_tokens=20)
+        mock_client.chat.completions.create.return_value = _make_chat_response(
+            "You spent $50.", usage=usage
+        )
+        mocker.patch("rag_api.openai_client.get_client", return_value=mock_client)
+        trace_context = TraceContext(trace_id="trace-1")
+
+        ask_openai(
+            "How much did I spend?",
+            [_make_result()],
+            _traced_settings(),
+            trace_context=trace_context,
+        )
+
+        record_generation.assert_called_once()
+        _, kwargs = record_generation.call_args
+        assert kwargs["name"] == "ask_openai"
+        assert kwargs["model"] == _traced_settings().openai_chat_model
+        assert kwargs["output"] == "You spent $50."
+        assert kwargs["usage"] == {"input": 12, "output": 8, "total": 20}
+        # Positional args are (settings, trace_context).
+        args, _ = record_generation.call_args
+        assert args[1] is trace_context
+
+    def test_records_error_status_on_answer_refusal_then_still_raises(self, mocker):
+        record_generation = mocker.patch(
+            "rag_api.openai_client.tracing.record_generation"
+        )
+        mock_client = mocker.Mock()
+        mock_client.chat.completions.create.return_value = _make_chat_response(
+            None, finish_reason="content_filter"
+        )
+        mocker.patch("rag_api.openai_client.get_client", return_value=mock_client)
+
+        with pytest.raises(AnswerRefusalError):
+            ask_openai(
+                "How much did I spend?", [_make_result()], _traced_settings()
+            )
+
+        _, kwargs = record_generation.call_args
+        assert kwargs["level"] == "ERROR"
+
+    def test_records_error_status_on_empty_answer_then_still_raises(self, mocker):
+        record_generation = mocker.patch(
+            "rag_api.openai_client.tracing.record_generation"
+        )
+        mock_client = mocker.Mock()
+        mock_client.chat.completions.create.return_value = _make_chat_response("")
+        mocker.patch("rag_api.openai_client.get_client", return_value=mock_client)
+
+        with pytest.raises(EmptyAnswerError):
+            ask_openai(
+                "How much did I spend?", [_make_result()], _traced_settings()
+            )
+
+        _, kwargs = record_generation.call_args
+        assert kwargs["level"] == "ERROR"
+
+    def test_records_error_status_when_the_openai_call_itself_raises_then_still_raises(
+        self, mocker
+    ):
+        record_generation = mocker.patch(
+            "rag_api.openai_client.tracing.record_generation"
+        )
+        mock_client = mocker.Mock()
+        mock_client.chat.completions.create.side_effect = RuntimeError("openai down")
+        mocker.patch("rag_api.openai_client.get_client", return_value=mock_client)
+
+        with pytest.raises(RuntimeError, match="openai down"):
+            ask_openai(
+                "How much did I spend?", [_make_result()], _traced_settings()
+            )
+
+        _, kwargs = record_generation.call_args
+        assert kwargs["level"] == "ERROR"
+
+    def test_empty_results_list_is_traced_normally(self, mocker):
+        record_generation = mocker.patch(
+            "rag_api.openai_client.tracing.record_generation"
+        )
+        mock_client = mocker.Mock()
+        mock_client.chat.completions.create.return_value = _make_chat_response(
+            "Nothing found."
+        )
+        mocker.patch("rag_api.openai_client.get_client", return_value=mock_client)
+
+        ask_openai("How much did I spend?", [], _traced_settings())
+
+        record_generation.assert_called_once()
+
+    def test_tracing_failure_does_not_block_ask_openai_result(self, mocker):
+        """If Langfuse's record_generation itself blows up, ask_openai must
+        still return the normal answer - tracing must never break the
+        primary request path (fail-open)."""
+        mocker.patch(
+            "rag_api.openai_client.tracing.record_generation",
+            side_effect=RuntimeError("langfuse down"),
+        )
+        mock_client = mocker.Mock()
+        mock_client.chat.completions.create.return_value = _make_chat_response(
+            "You spent $50."
+        )
+        mocker.patch("rag_api.openai_client.get_client", return_value=mock_client)
+
+        answer, _sources = ask_openai(
+            "How much did I spend?", [_make_result()], _traced_settings()
+        )
+
+        assert answer == "You spent $50."
+
+
+class TestCheckGroundednessTracing:
+    def test_records_a_generation_on_success(self, mocker):
+        record_generation = mocker.patch(
+            "rag_api.openai_client.tracing.record_generation"
+        )
+        mock_client = mocker.Mock()
+        payload = {"grounded": True, "issues": ""}
+        usage = SimpleNamespace(prompt_tokens=30, completion_tokens=4, total_tokens=34)
+        mock_client.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(payload)))],
+            usage=usage,
+        )
+        mocker.patch("rag_api.openai_client.get_client", return_value=mock_client)
+        trace_context = TraceContext(trace_id="trace-2")
+
+        check_groundedness(
+            "How much did I spend?",
+            "You spent $50.",
+            [_make_result()],
+            _traced_settings(),
+            trace_context=trace_context,
+        )
+
+        record_generation.assert_called_once()
+        _, kwargs = record_generation.call_args
+        assert kwargs["name"] == "check_groundedness"
+        assert kwargs["usage"] == {"input": 30, "output": 4, "total": 34}
+        args, _ = record_generation.call_args
+        assert args[1] is trace_context
+
+    def test_records_error_status_when_judge_call_raises_and_still_fails_open(
+        self, mocker
+    ):
+        record_generation = mocker.patch(
+            "rag_api.openai_client.tracing.record_generation"
+        )
+        mock_client = mocker.Mock()
+        mock_client.chat.completions.create.side_effect = RuntimeError("judge down")
+        mocker.patch("rag_api.openai_client.get_client", return_value=mock_client)
+
+        result = check_groundedness(
+            "How much did I spend?", "You spent $50.", [_make_result()], _traced_settings()
+        )
+
+        assert result.grounded is True  # still fails open
+        _, kwargs = record_generation.call_args
+        assert kwargs["level"] == "ERROR"
+
+    def test_tracing_failure_does_not_break_check_groundedness_fail_open_result(
+        self, mocker
+    ):
+        mocker.patch(
+            "rag_api.openai_client.tracing.record_generation",
+            side_effect=RuntimeError("langfuse down"),
+        )
+        mock_client = mocker.Mock()
+        payload = {"grounded": True, "issues": ""}
+        mock_client.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(payload)))]
+        )
+        mocker.patch("rag_api.openai_client.get_client", return_value=mock_client)
+
+        result = check_groundedness(
+            "How much did I spend?", "You spent $50.", [_make_result()], _traced_settings()
         )
 
         assert result.grounded is True

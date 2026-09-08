@@ -15,6 +15,7 @@ from rag_api.agent.state import (
     AgentState,
 )
 from rag_api.config import RagApiSettings
+from rag_api.tracing import TraceContext
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,11 @@ def refine_node(state: AgentState) -> dict:
     return {"date_from": None, "date_to": None, "document_type": None}
 
 
-def generate_node(state: AgentState, settings: RagApiSettings) -> dict:
+def generate_node(
+    state: AgentState,
+    settings: RagApiSettings,
+    trace_context: TraceContext | None = None,
+) -> dict:
     history = state.get("messages", [])
     critique_feedback = state.get("critique_feedback")
     answer, sources = openai_client.ask_openai(
@@ -87,6 +92,7 @@ def generate_node(state: AgentState, settings: RagApiSettings) -> dict:
         settings,
         history=history,
         critique_feedback=critique_feedback,
+        trace_context=trace_context,
     )
     updated_messages = [
         *history,
@@ -96,7 +102,11 @@ def generate_node(state: AgentState, settings: RagApiSettings) -> dict:
     return {"answer": answer, "sources": sources, "messages": updated_messages}
 
 
-def critique_node(state: AgentState, settings: RagApiSettings) -> dict:
+def critique_node(
+    state: AgentState,
+    settings: RagApiSettings,
+    trace_context: TraceContext | None = None,
+) -> dict:
     """Check whether generate_node's `answer` is grounded in the retrieved
     `results` and, if not, either request one regeneration (with feedback)
     or - once MAX_CRITIQUE_ATTEMPTS is exhausted - append a soft caveat and
@@ -111,7 +121,11 @@ def critique_node(state: AgentState, settings: RagApiSettings) -> dict:
     """
     try:
         result = openai_client.check_groundedness(
-            state["question"], state["answer"], state.get("results", []), settings
+            state["question"],
+            state["answer"],
+            state.get("results", []),
+            settings,
+            trace_context=trace_context,
         )
     except Exception:
         logger.exception(
