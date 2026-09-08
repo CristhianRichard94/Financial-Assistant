@@ -8,7 +8,7 @@ import {
   Upload,
   FileText,
   Table2,
-  Image,
+  Image as ImageIcon,
   Trash2,
   CheckCircle2,
   Clock,
@@ -65,7 +65,7 @@ function useDocuments() {
 function DocTypeIcon({ type }: { type: Document["type"] }) {
   if (type === "pdf") return <FileText className="w-4 h-4 text-red-500 dark:text-red-400" />;
   if (type === "csv") return <Table2 className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />;
-  return <Image className="w-4 h-4 text-blue-500 dark:text-blue-400" />;
+  return <ImageIcon className="w-4 h-4 text-blue-500 dark:text-blue-400" />;
 }
 
 function StatusBadge({ status }: { status: Document["status"] }) {

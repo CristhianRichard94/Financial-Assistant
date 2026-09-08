@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start -p ${PORT:-23970} --hostname 0.0.0.0",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -49,7 +50,10 @@
     "@types/node": "^24.0.1",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
+    "@eslint/eslintrc": "^3.0.0",
     "@vitejs/plugin-react": "^5.0.4",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.3.3",
     "jsdom": "^29.1.1",
     "msw": "^2.14.6",
     "tailwindcss": "^4.1.10",

@@ -1,14 +1,14 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState, KeyboardEvent } from "react";
-import { Send, Bot, User, Loader2, FileText, AlertCircle, Clock } from "lucide-react";
-import { nanoid } from "nanoid";
-import { toast } from "sonner";
-import { useTranslations } from "next-intl";
-import { cn, formatDate } from "@/lib/utils";
-import Link from "next/link";
 import type { ChatMessage, Document } from "@/lib/types";
+import { cn, } from "@/lib/utils";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertCircle, Bot, Clock, Loader2, Send, User } from "lucide-react";
+import { nanoid } from "nanoid";
+import { useTranslations } from "next-intl";
+import Link from "next/link";
+import { KeyboardEvent, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 type OptimisticStatus = "pending" | "failed";
 
