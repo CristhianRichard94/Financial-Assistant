@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -16,6 +18,24 @@ from rag_pipeline.supabase_client import get_supabase_client
 from rag_pipeline.transactions import parse_transactions_csv
 
 _IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+
+
+def _idempotency_key(*parts: str) -> str:
+    """Deterministic sha256 hash of `parts`, used as the `idempotency_key`
+    column value for the upserts below (see sql/014_add_ingest_idempotency_
+    keys.sql for the DB-side unique index this relies on).
+
+    A plain content hash (not a random UUID) so that, when `parts` are
+    themselves stable/reproducible (e.g. a chunk's `document_id` + its
+    `chunk_index`, or a transaction's `document_id` + its position in the
+    parsed CSV), the same logical row always hashes to the same key - a
+    retried `execute_with_retry` attempt for the exact same insert call
+    reuses the same key automatically (the key is computed once, before
+    entering the retry loop, and the same payload is re-sent on every
+    attempt), so the DB-side unique index turns a retried insert into a
+    no-op upsert onto the same row instead of a duplicate.
+    """
+    return hashlib.sha256(":".join(parts).encode()).hexdigest()
 
 
 def infer_document_type(filename: str) -> str | None:
@@ -70,13 +90,27 @@ def create_pending_document(
         # size_bytes from the /upload route) are preserved as-is.
         merged_metadata.setdefault("document_type", document_type)
 
+    # No naturally stable identifying field exists for a *new* pending
+    # document at creation time (unlike the chunk/transaction rows below,
+    # which have a stable document_id + position to hash) - two genuinely
+    # separate uploads of the same filename by the same user must not
+    # collide onto the same idempotency key. `call_nonce` is generated once
+    # here, outside `execute_with_retry`, so every retry of *this* call
+    # reuses the exact same key (the closure/payload is unchanged across
+    # attempts) while two distinct calls to `create_pending_document` still
+    # get distinct keys.
+    call_nonce = uuid.uuid4().hex
+    idempotency_key = _idempotency_key(user_id, filename, call_nonce)
+
     document_row = execute_with_retry(
-        supabase.table("documents").insert(
+        supabase.table("documents").upsert(
             {
                 "filename": filename,
                 "user_id": user_id,
                 "metadata": merged_metadata,
-            }
+                "idempotency_key": idempotency_key,
+            },
+            on_conflict="idempotency_key",
         )
     )
     # The new row bumps the dashboard summary's total_document_count
@@ -145,10 +179,18 @@ def process_document(
                 "chunk_index": chunk.index,
                 "embedding": embedding,
                 "metadata": {"token_count": chunk.token_count},
+                # document_id + chunk_index is stable and unique per chunk -
+                # a retried insert of this exact batch (see
+                # `_idempotency_key`'s docstring) hashes to the same key
+                # every attempt, so a retry after an ambiguous timeout
+                # upserts onto the same rows instead of duplicating them.
+                "idempotency_key": _idempotency_key(document_id, str(chunk.index)),
             }
             for chunk, embedding in zip(chunks, embeddings)
         ]
-        execute_with_retry(supabase.table("document_chunks").insert(chunk_rows))
+        execute_with_retry(
+            supabase.table("document_chunks").upsert(chunk_rows, on_conflict="idempotency_key")
+        )
 
         if path.suffix.lower() == ".csv":
             _extract_and_store_transactions(supabase, document_id, path, user_id)
@@ -215,10 +257,18 @@ def _extract_and_store_transactions(
             "amount": str(transaction.amount),
             "category": transaction.category,
             "description": transaction.description,
+            # document_id + the transaction's position in the parsed CSV is
+            # stable and unique per row (two transactions in the same CSV
+            # can otherwise share identical date/amount/description) - see
+            # `_idempotency_key`'s docstring for why this makes a retried
+            # insert of this exact batch idempotent.
+            "idempotency_key": _idempotency_key(document_id, str(index)),
         }
-        for transaction in parsed
+        for index, transaction in enumerate(parsed)
     ]
-    execute_with_retry(supabase.table("transactions").insert(transaction_rows))
+    execute_with_retry(
+        supabase.table("transactions").upsert(transaction_rows, on_conflict="idempotency_key")
+    )
 
 
 def _mark_failed_with_message(supabase: Any, document_id: str, message: str) -> None:
