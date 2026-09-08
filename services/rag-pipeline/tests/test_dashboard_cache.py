@@ -532,6 +532,83 @@ def test_reset_for_tests_clears_redis_state(fake_supabase, fake_settings, fake_r
     assert compute_spy.call_count == 2
 
 
+def test_redis_path_serializes_cached_value_as_json_not_pickle(
+    fake_supabase, fake_settings, fake_redis_client
+):
+    """Regression test for issue #32: cached values must be stored as JSON,
+    never pickle - pickle.loads() on Redis-stored bytes is an RCE risk if
+    Redis is ever attacker-reachable."""
+    import json
+
+    _seed_transaction(fake_supabase)
+
+    get_dashboard_summary(USER_ID, settings=fake_settings)
+
+    raw_values = list(fake_redis_client._store.values())
+    assert raw_values
+    for raw in raw_values:
+        # Must parse as JSON (pickle bytes would not).
+        parsed = json.loads(raw)
+        assert isinstance(parsed, dict)
+        assert parsed["__dataclass__"].endswith("DashboardSummary")
+
+
+def test_redis_path_round_trips_dashboard_summary_via_json(
+    fake_supabase, fake_settings, fake_redis_client
+):
+    _seed_transaction(fake_supabase, amount="250.00")
+
+    first = get_dashboard_summary(USER_ID, settings=fake_settings)
+    dashboard_cache.reset_for_tests()
+    fake_redis_client._store.clear()
+
+    # Re-populate via a fresh cache write, then read it back from the
+    # (JSON-serialized) Redis-backed cache to confirm the round trip
+    # reconstructs an equal DashboardSummary, including nested
+    # CategoryBreakdown dataclasses.
+    second = get_dashboard_summary(USER_ID, settings=fake_settings)
+    third = get_dashboard_summary(USER_ID, settings=fake_settings)
+
+    assert second == first
+    assert third == second
+
+
+def test_redis_path_round_trips_recent_activity_list_via_json(
+    fake_supabase, fake_settings, fake_redis_client
+):
+    _seed_transaction(fake_supabase, id="tx-a")
+    _seed_transaction(fake_supabase, id="tx-b", occurred_on="2099-01-01")
+
+    first = get_recent_activity(USER_ID, settings=fake_settings)
+    second = get_recent_activity(USER_ID, settings=fake_settings)
+
+    assert second == first
+    assert [tx.id for tx in second] == [tx.id for tx in first]
+
+
+def test_redis_path_treats_malformed_cached_bytes_as_cache_miss(
+    fake_supabase, fake_settings, fake_redis_client, mocker, caplog
+):
+    """Malformed/non-JSON cached bytes (e.g. corrupted data, or a leftover
+    pickle-format entry from before this cache switched to JSON) must be
+    treated as a cache miss - logged and recomputed - never raised."""
+    _seed_transaction(fake_supabase)
+    compute_spy = mocker.spy(dashboard, "_compute_dashboard_summary")
+
+    # Prime the cache, then corrupt the stored bytes directly.
+    get_dashboard_summary(USER_ID, settings=fake_settings)
+    assert compute_spy.call_count == 1
+    for key in list(fake_redis_client._store):
+        fake_redis_client._store[key] = b"\x80\x04not-valid-json-or-pickle"
+
+    with caplog.at_level("WARNING"):
+        result = get_dashboard_summary(USER_ID, settings=fake_settings)
+
+    assert compute_spy.call_count == 2
+    assert result.total_income == 100.00
+    assert any("malformed" in record.message.lower() for record in caplog.records)
+
+
 def test_falls_back_to_local_cache_when_redis_not_configured(fake_supabase, fake_settings, mocker):
     """Without REDIS_URL/a configured client, `get_redis_client()` returns
     None and the dashboard cache must still work via its in-process

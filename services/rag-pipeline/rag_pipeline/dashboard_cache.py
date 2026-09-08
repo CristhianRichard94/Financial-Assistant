@@ -68,12 +68,17 @@ today; would need revisiting if the user base grows by orders of magnitude.
 
 from __future__ import annotations
 
-import pickle
+import dataclasses
+import importlib
+import json
+import logging
 import threading
 import time
-from typing import Callable, Generic, TypeVar
+from typing import Any, Callable, Generic, TypeVar
 
 from rag_pipeline import redis_support
+
+logger = logging.getLogger(__name__)
 
 # Kept as a named constant so it's easy to tune later.
 TTL_SECONDS = 30.0
@@ -195,6 +200,88 @@ class _TTLCache(Generic[_T]):
             self._prefix_epochs.clear()
 
 
+_DATACLASS_TAG = "__dataclass__"
+
+
+def _encode(value: Any) -> Any:
+    """Recursively convert `value` into a plain JSON-serializable structure,
+    tagging dataclass instances with their fully-qualified class path so
+    `_decode` can reconstruct the exact same type on read.
+
+    Used instead of `dataclasses.asdict()` (which would work for the
+    top-level `DashboardSummary`/`TransactionRecord` dataclasses but
+    irreversibly flattens *nested* dataclasses - e.g.
+    `DashboardSummary.category_breakdown`, a `list[CategoryBreakdown]` - into
+    plain dicts with no way to tell `_decode` to turn them back into
+    `CategoryBreakdown` instances). Recursing field-by-field via `getattr`
+    instead keeps every nested dataclass tagged too.
+    """
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return {
+            _DATACLASS_TAG: f"{type(value).__module__}.{type(value).__qualname__}",
+            "fields": {
+                field.name: _encode(getattr(value, field.name))
+                for field in dataclasses.fields(value)
+            },
+        }
+    if isinstance(value, list):
+        return [_encode(item) for item in value]
+    if isinstance(value, tuple):
+        return [_encode(item) for item in value]
+    return value
+
+
+def _resolve_dataclass(dotted_path: str) -> type:
+    module_name, _, qualname = dotted_path.rpartition(".")
+    module = importlib.import_module(module_name)
+    obj: Any = module
+    for part in qualname.split("."):
+        obj = getattr(obj, part)
+    return obj
+
+
+def _decode(value: Any) -> Any:
+    if isinstance(value, dict) and _DATACLASS_TAG in value:
+        cls = _resolve_dataclass(value[_DATACLASS_TAG])
+        fields = {name: _decode(field_value) for name, field_value in value["fields"].items()}
+        return cls(**fields)
+    if isinstance(value, list):
+        return [_decode(item) for item in value]
+    return value
+
+
+def _serialize_for_cache(value: Any) -> bytes:
+    """Serialize a cached value (a dataclass, or a list of dataclasses) to
+    JSON bytes for storage in Redis.
+
+    Replaces `pickle` (used here previously) deliberately: `pickle.loads()`
+    on Redis-stored bytes is an RCE risk if Redis is ever attacker-reachable
+    (an attacker who can write to the configured Redis instance/key space
+    could get arbitrary code execution in this process on the next cache
+    read). JSON has no such execution hook - at worst, malformed/unexpected
+    JSON fails to parse or reconstruct, handled by `_deserialize_from_cache`
+    below as a cache miss, never as code execution.
+    """
+    return json.dumps(_encode(value)).encode()
+
+
+def _deserialize_from_cache(raw: bytes) -> Any:
+    """Inverse of `_serialize_for_cache`.
+
+    Raises `ValueError` on anything that isn't valid JSON matching the
+    tagged-dataclass shape `_encode` produces - including bytes left over
+    from a previous pickle-based deployment, or a malformed/corrupted Redis
+    value. Callers treat this as a cache miss (see `_HybridTTLCache.
+    get_or_compute`) rather than letting a bad cached value crash the
+    request.
+    """
+    try:
+        return _decode(json.loads(raw))
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError, KeyError, AttributeError,
+            ImportError, ModuleNotFoundError) as exc:
+        raise ValueError(f"Malformed cache entry: {exc}") from exc
+
+
 class _HybridTTLCache(Generic[_T]):
     """Wraps a `_TTLCache` (in-process fallback) and transparently serves
     every call from Redis instead whenever `REDIS_URL` is configured (see
@@ -227,7 +314,17 @@ class _HybridTTLCache(Generic[_T]):
         redis_key = self._redis_key(key)
         cached = client.get(redis_key)
         if cached is not None:
-            return pickle.loads(cached)
+            try:
+                return _deserialize_from_cache(cached)
+            except ValueError:
+                # Malformed/non-JSON cached bytes (corrupted value, or a
+                # leftover pickle-format entry from before this cache
+                # switched to JSON) - treat as a cache miss rather than
+                # raising, so a bad cached value never crashes the request
+                # it happens to be served for.
+                logger.warning(
+                    "Discarding malformed dashboard cache entry for key %r", redis_key
+                )
 
         # Computed outside of any lock/transaction, same tradeoff as
         # `_TTLCache.get_or_compute` (see its docstring) - and, unlike that
@@ -235,7 +332,7 @@ class _HybridTTLCache(Generic[_T]):
         # invalidation racing this compute() (documented module-level
         # limitation above).
         value = compute()
-        client.setex(redis_key, int(self._ttl_seconds), pickle.dumps(value))
+        client.setex(redis_key, int(self._ttl_seconds), _serialize_for_cache(value))
         return value
 
     def invalidate(self, key: str) -> None:
