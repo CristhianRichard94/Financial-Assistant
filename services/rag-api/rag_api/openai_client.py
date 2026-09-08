@@ -15,14 +15,17 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 import httpx
 from openai import OpenAI
 from rag_pipeline.search import SearchResult
 
+from rag_api import tracing
 from rag_api.config import RagApiSettings
 from rag_api.pii_guard import redact_sensitive_numbers
 from rag_api.schemas import SourceOut
+from rag_api.tracing import TraceContext
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +116,41 @@ def _escape_filename_for_prompt(filename: str) -> str:
     return filename.replace('"', "'").replace("<", "").replace(">", "")
 
 
+def _extract_usage(response: object) -> dict[str, int] | None:
+    """Best-effort extraction of token-usage fields from an OpenAI chat
+    completion response, for inclusion in a Langfuse generation's
+    usage_details. Returns None if the response has no usable `.usage`
+    (e.g. a test double, or an SDK/response shape without it) - usage is a
+    nice-to-have on a trace, never something worth failing/raising over.
+    """
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return None
+    try:
+        return {
+            "input": getattr(usage, "prompt_tokens", None),
+            "output": getattr(usage, "completion_tokens", None),
+            "total": getattr(usage, "total_tokens", None),
+        }
+    except Exception:
+        return None
+
+
+def _safe_record_generation(*args, **kwargs) -> None:
+    """Defense-in-depth wrapper around tracing.record_generation.
+
+    tracing.record_generation already fails open internally (see
+    rag_api/tracing.py), but this guards ask_openai/check_groundedness
+    against it raising anyway, the same reasoning critique_node's own
+    try/except around check_groundedness applies on top of
+    check_groundedness's own internal fail-open handling.
+    """
+    try:
+        tracing.record_generation(*args, **kwargs)
+    except Exception:
+        logger.exception("Unexpected error recording Langfuse generation; ignoring.")
+
+
 def _build_excerpts_block(results: list[SearchResult]) -> str:
     if not results:
         excerpts = "(No matching document excerpts were found.)"
@@ -162,6 +200,7 @@ def ask_openai(
     settings: RagApiSettings,
     history: list[dict[str, str]] | None = None,
     critique_feedback: str | None = None,
+    trace_context: TraceContext | None = None,
 ) -> tuple[str, list[SourceOut]]:
     """Ask OpenAI to synthesize an answer from the retrieved chunks.
 
@@ -197,32 +236,90 @@ def ask_openai(
     """
     client = get_client(settings.openai_api_key)
     prompt = build_prompt(question, results, critique_feedback=critique_feedback)
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        *(history or []),
+        {"role": "user", "content": prompt},
+    ]
 
-    response = client.chat.completions.create(
-        model=settings.openai_chat_model,
-        max_completion_tokens=MAX_TOKENS,
-        reasoning_effort="minimal",
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            *(history or []),
-            {"role": "user", "content": prompt},
-        ],
-    )
+    start_time = datetime.now(timezone.utc)
+    try:
+        response = client.chat.completions.create(
+            model=settings.openai_chat_model,
+            max_completion_tokens=MAX_TOKENS,
+            reasoning_effort="minimal",
+            messages=messages,
+        )
+    except Exception as exc:
+        _safe_record_generation(
+            settings,
+            trace_context,
+            name="ask_openai",
+            model=settings.openai_chat_model,
+            input_messages=messages,
+            start_time=start_time,
+            end_time=datetime.now(timezone.utc),
+            level="ERROR",
+            status_message=str(exc),
+        )
+        raise
 
+    end_time = datetime.now(timezone.utc)
     choice = response.choices[0]
+    usage = _extract_usage(response)
+
     if choice.finish_reason == "content_filter":
+        _safe_record_generation(
+            settings,
+            trace_context,
+            name="ask_openai",
+            model=settings.openai_chat_model,
+            input_messages=messages,
+            start_time=start_time,
+            end_time=end_time,
+            usage=usage,
+            level="ERROR",
+            status_message="AnswerRefusalError: model declined to answer (content_filter).",
+        )
         raise AnswerRefusalError(
             "The model declined to answer this question based on the retrieved documents."
         )
 
     answer = choice.message.content
     if not answer or not answer.strip():
+        _safe_record_generation(
+            settings,
+            trace_context,
+            name="ask_openai",
+            model=settings.openai_chat_model,
+            input_messages=messages,
+            start_time=start_time,
+            end_time=end_time,
+            output=answer,
+            usage=usage,
+            level="ERROR",
+            status_message=(
+                f"EmptyAnswerError: empty answer (finish_reason={choice.finish_reason!r})."
+            ),
+        )
         raise EmptyAnswerError(
             "The model returned an empty answer (finish_reason="
             f"{choice.finish_reason!r})."
         )
 
     answer = redact_sensitive_numbers(answer)
+
+    _safe_record_generation(
+        settings,
+        trace_context,
+        name="ask_openai",
+        model=settings.openai_chat_model,
+        input_messages=messages,
+        start_time=start_time,
+        end_time=end_time,
+        output=answer,
+        usage=usage,
+    )
 
     sources = [
         SourceOut(filename=result.filename, similarity=result.similarity)
@@ -302,6 +399,7 @@ def check_groundedness(
     answer: str,
     results: list[SearchResult],
     settings: RagApiSettings,
+    trace_context: TraceContext | None = None,
 ) -> GroundednessResult:
     """Check whether `answer`'s claims are supported by `results` via an
     OpenAI judge call.
@@ -312,21 +410,21 @@ def check_groundedness(
     `_default_groundedness_result`).
     """
     content: str | None = None
+    messages = [
+        {"role": "system", "content": GROUNDEDNESS_SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": _build_groundedness_user_prompt(question, answer, results),
+        },
+    ]
+    start_time = datetime.now(timezone.utc)
     try:
         client = get_client(settings.openai_api_key)
         response = client.chat.completions.create(
             model=settings.openai_chat_model,
             max_completion_tokens=GROUNDEDNESS_MAX_TOKENS,
             reasoning_effort="minimal",
-            messages=[
-                {"role": "system", "content": GROUNDEDNESS_SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": _build_groundedness_user_prompt(
-                        question, answer, results
-                    ),
-                },
-            ],
+            messages=messages,
             response_format={
                 "type": "json_schema",
                 "json_schema": _GROUNDEDNESS_JSON_SCHEMA,
@@ -336,14 +434,38 @@ def check_groundedness(
         content = response.choices[0].message.content
         payload = json.loads(content)
 
-        return GroundednessResult(
+        result = GroundednessResult(
             grounded=bool(payload["grounded"]),
             issues=payload.get("issues") or "",
         )
-    except Exception:
+        _safe_record_generation(
+            settings,
+            trace_context,
+            name="check_groundedness",
+            model=settings.openai_chat_model,
+            input_messages=messages,
+            start_time=start_time,
+            end_time=datetime.now(timezone.utc),
+            output=content,
+            usage=_extract_usage(response),
+        )
+        return result
+    except Exception as exc:
         logger.exception(
             "Failed to check groundedness; failing open (treating answer as "
             "grounded). Raw model content (truncated): %r",
             content[:200] if content else content,
+        )
+        _safe_record_generation(
+            settings,
+            trace_context,
+            name="check_groundedness",
+            model=settings.openai_chat_model,
+            input_messages=messages,
+            start_time=start_time,
+            end_time=datetime.now(timezone.utc),
+            output=content,
+            level="ERROR",
+            status_message=f"{type(exc).__name__}: {exc}",
         )
         return _default_groundedness_result()

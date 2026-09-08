@@ -89,6 +89,12 @@ READYZ_SUPABASE_TIMEOUT_SECONDS = 3.0
 # rag_api/agent/graph.py for why real deployments use Postgres instead.
 DEFAULT_AGENT_CHECKPOINT_DB_PATH = "agent_checkpoints.sqlite"
 
+# Default Langfuse ingestion host, used when LANGFUSE_HOST is unset (see
+# langfuse_host below). Langfuse Cloud's default region - overridable via
+# LANGFUSE_HOST for a self-hosted instance or a different Langfuse Cloud
+# region.
+DEFAULT_LANGFUSE_HOST = "https://cloud.langfuse.com"
+
 
 # `MissingEnvironmentVariable` and `_require_env` below intentionally
 # duplicate the (near-identical) definitions in
@@ -119,6 +125,17 @@ class RagApiSettings:
     query_rate_limit_per_minute: int = QUERY_RATE_LIMIT_PER_MINUTE
     upload_rate_limit_per_minute: int = UPLOAD_RATE_LIMIT_PER_MINUTE
     readyz_rate_limit_per_second: int = READYZ_RATE_LIMIT_PER_SECOND
+    # Optional Langfuse tracing/observability credentials (see
+    # rag_api/tracing.py). Both unset by default (hence os.environ.get, not
+    # _require_env, same reasoning as agent_checkpoint_db_url above) so
+    # local dev and pytest keep working with zero external dependencies and
+    # tracing simply disabled - rag_api.tracing fails open on every call
+    # site when either key is missing. Real deployments source these from
+    # Secrets Manager, same as the other credentials on this dataclass -
+    # never log these values or include them in an exception message.
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: str | None = None
+    langfuse_host: str = DEFAULT_LANGFUSE_HOST
 
 
 def _require_env(name: str) -> str:
@@ -178,4 +195,7 @@ def load_rag_api_settings() -> RagApiSettings:
         readyz_rate_limit_per_second=_int_env(
             "READYZ_RATE_LIMIT_PER_SECOND", READYZ_RATE_LIMIT_PER_SECOND
         ),
+        langfuse_public_key=os.environ.get("LANGFUSE_PUBLIC_KEY"),
+        langfuse_secret_key=os.environ.get("LANGFUSE_SECRET_KEY"),
+        langfuse_host=os.environ.get("LANGFUSE_HOST", DEFAULT_LANGFUSE_HOST),
     )

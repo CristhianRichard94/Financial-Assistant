@@ -32,9 +32,11 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, StateGraph
 from psycopg_pool import ConnectionPool
 
+from rag_api import tracing
 from rag_api.agent import nodes
 from rag_api.agent.state import AgentState
 from rag_api.config import RagApiSettings
+from rag_api.tracing import TraceContext
 
 # Module-level cache of one checkpointer (and its underlying sqlite3
 # connection, or psycopg ConnectionPool) per checkpoint DB key, so repeated
@@ -183,7 +185,14 @@ def _get_checkpointer(
     return _get_sqlite_checkpointer(settings.agent_checkpoint_db_path)
 
 
-def build_agent_graph(settings: RagApiSettings):
+def build_agent_graph(settings: RagApiSettings, trace_context: TraceContext | None = None):
+    """`trace_context`, if given, is threaded into generate_node/
+    critique_node (the graph's two LLM-calling nodes) so every generation
+    they produce during this one graph run is recorded as nested
+    observations of the same Langfuse trace - see rag_api/tracing.py and
+    run_agent_query below, which creates one trace per call and passes it
+    through here.
+    """
     graph = StateGraph(AgentState)
 
     graph.add_node("parse", partial(nodes.parse_node, settings=settings))
@@ -191,8 +200,14 @@ def build_agent_graph(settings: RagApiSettings):
     graph.add_node("retrieve", partial(nodes.retrieve_node, settings=settings))
     graph.add_node("grade", nodes.grade_node)
     graph.add_node("refine", nodes.refine_node)
-    graph.add_node("generate", partial(nodes.generate_node, settings=settings))
-    graph.add_node("critique", partial(nodes.critique_node, settings=settings))
+    graph.add_node(
+        "generate",
+        partial(nodes.generate_node, settings=settings, trace_context=trace_context),
+    )
+    graph.add_node(
+        "critique",
+        partial(nodes.critique_node, settings=settings, trace_context=trace_context),
+    )
 
     graph.set_entry_point("parse")
 
@@ -242,10 +257,36 @@ def run_agent_query(
     before this turn runs, and the resulting state - including this turn's
     appended history - is checkpointed back under the same thread_id for
     the next call to read.
+
+    One Langfuse trace (see rag_api/tracing.py) is started per call to this
+    function - not per conversation_id - so two sequential turns in the
+    same conversation produce two separate traces, each containing the
+    nested generations (ask_openai/check_groundedness calls) made by that
+    one turn's graph run. Tracing is entirely optional/fail-open: if
+    unconfigured or the SDK fails, `trace_context` is None and the graph
+    still runs exactly as it would without tracing.
     """
-    app = build_agent_graph(settings)
-    thread_id = f"{user_id}:{conversation_id}"
-    return app.invoke(
-        {"question": question, "user_id": user_id, "attempt": 0},
-        config={"configurable": {"thread_id": thread_id}},
+    trace_context = tracing.start_trace(
+        settings,
+        name="agent_query",
+        user_id=user_id,
+        session_id=conversation_id,
+        metadata={"conversation_id": conversation_id},
     )
+    app = build_agent_graph(settings, trace_context=trace_context)
+    thread_id = f"{user_id}:{conversation_id}"
+    try:
+        result = app.invoke(
+            {"question": question, "user_id": user_id, "attempt": 0},
+            config={"configurable": {"thread_id": thread_id}},
+        )
+    except Exception as exc:
+        tracing.update_trace(
+            settings, trace_context, level="ERROR", status_message=str(exc)
+        )
+        raise
+
+    tracing.update_trace(
+        settings, trace_context, output={"answer": result.get("answer")}
+    )
+    return result
