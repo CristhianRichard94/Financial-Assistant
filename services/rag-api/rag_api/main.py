@@ -57,3 +57,4 @@ app.include_router(health.router)
 app.include_router(documents.router)
 app.include_router(query.router)
 app.include_router(dashboard.router)
+
