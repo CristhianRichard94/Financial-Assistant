@@ -50,7 +50,7 @@
     "analyzedFrom": "Analizado a partir de {count, plural, one {# documento} other {# documentos}}",
     "recentActivity": "Actividad reciente",
     "spendingByCategory": "Gastos por categoría",
-    "categoryError": "No se pudo cargar el desglose por categoría. Inténtalo de nuevo.",
+    "categoryError": "Esto es una demo — el backend está apagado entre usos para reducir costos de hosting. Escríbeme y lo reactivo para mostrarte el desglose por categoría.",
     "emptyTitle": "Aún no hay datos financieros",
     "emptyDescription": "Sube un estado de cuenta o CSV para ver tu panorama.",
     "uploadDocuments": "Subir documentos",
@@ -60,10 +60,10 @@
     "uploadCsv": "Subir una exportación CSV bancaria",
     "noTransactionsYet": "Aún no se encontraron transacciones.",
     "noSpendingYet": "Aún no hay datos de gastos que mostrar.",
-    "summaryUnavailable": "No pudimos cargar tu resumen en este momento.",
+    "summaryUnavailable": "Esto es una demo — el backend está apagado entre usos para reducir costos de hosting. Escríbeme y lo reactivo para ti.",
     "retryInlinePrompt": "¿Problemas para cargar tus datos?",
     "retryInlineAction": "Reintentar",
-    "activityUnavailable": "La actividad reciente no está disponible en este momento."
+    "activityUnavailable": "Esto es una demo — el backend está apagado entre usos para reducir costos de hosting. Escríbeme y lo reactivo para mostrarte la actividad reciente."
   },
   "documents": {
     "title": "Documentos",
@@ -80,7 +80,7 @@
     "status": "Estado",
     "deleteDocument": "Eliminar documento",
     "noDocuments": "Aún no hay documentos. Sube uno arriba para comenzar.",
-    "loadError": "No se pudieron cargar tus documentos. Inténtalo de nuevo.",
+    "loadError": "Esto es una demo — el backend está apagado entre usos para reducir costos de hosting. Escríbeme y lo reactivo para que puedas ver tus documentos.",
     "documentDeleted": "Documento eliminado",
     "uploadedSuccessfully": "{fileName} se subió correctamente",
     "statuses": {
@@ -102,7 +102,7 @@
     "sending": "Enviando…",
     "notSent": "No enviado",
     "notSentAriaLabel": "Mensaje no enviado. Presiona Enter para editar y reenviar.",
-    "loadError": "No se pudieron cargar los mensajes. Inténtalo de nuevo.",
+    "loadError": "Esto es una demo — el backend está apagado entre usos para reducir costos de hosting. Escríbeme y lo reactivo para que puedas chatear.",
     "noDocumentsCallout": "Aún no hay documentos procesados.",
     "uploadADocument": "Sube un documento",
     "toEnableFullAnalysis": "para habilitar el análisis financiero completo.",

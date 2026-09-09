@@ -50,7 +50,7 @@
     "analyzedFrom": "Analyzed from {count, plural, one {# document} other {# documents}}",
     "recentActivity": "Recent Activity",
     "spendingByCategory": "Spending by Category",
-    "categoryError": "Couldn't load category breakdown. Please try again.",
+    "categoryError": "This is a demo — the backend is turned off between uses to keep hosting costs down. Message me and I'll spin it back up to show you the category breakdown.",
     "emptyTitle": "No financial data yet",
     "emptyDescription": "Upload a bank statement or CSV to see your overview.",
     "uploadDocuments": "Upload documents",
@@ -60,10 +60,10 @@
     "uploadCsv": "Upload a CSV bank export",
     "noTransactionsYet": "No transactions found yet.",
     "noSpendingYet": "No spending data to show yet.",
-    "summaryUnavailable": "We couldn't load your summary right now.",
+    "summaryUnavailable": "This is a demo — the backend is turned off between uses to keep hosting costs down. Message me and I'll spin it back up for you.",
     "retryInlinePrompt": "Having trouble loading your data?",
     "retryInlineAction": "Retry",
-    "activityUnavailable": "Recent activity is unavailable right now."
+    "activityUnavailable": "This is a demo — the backend is turned off between uses to keep hosting costs down. Message me and I'll spin it back up to show you recent activity."
   },
   "documents": {
     "title": "Documents",
@@ -80,7 +80,7 @@
     "status": "Status",
     "deleteDocument": "Delete document",
     "noDocuments": "No documents yet. Upload one above to get started.",
-    "loadError": "Couldn't load your documents. Please try again.",
+    "loadError": "This is a demo — the backend is turned off between uses to keep hosting costs down. Message me and I'll spin it back up so you can see your documents.",
     "documentDeleted": "Document deleted",
     "uploadedSuccessfully": "{fileName} uploaded successfully",
     "statuses": {
@@ -102,7 +102,7 @@
     "sending": "Sending…",
     "notSent": "Not sent",
     "notSentAriaLabel": "Message not sent. Press Enter to edit and resend.",
-    "loadError": "Couldn't load messages. Please try again.",
+    "loadError": "This is a demo — the backend is turned off between uses to keep hosting costs down. Message me and I'll spin it back up so you can chat.",
     "noDocumentsCallout": "No processed documents yet.",
     "uploadADocument": "Upload a document",
     "toEnableFullAnalysis": "to enable full financial analysis.",
