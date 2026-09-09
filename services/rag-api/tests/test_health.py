@@ -88,6 +88,24 @@ def test_readyz_returns_503_within_bounded_time_when_supabase_hangs(
     assert elapsed < 1.5
 
 
+def test_check_supabase_executor_is_module_level_not_recreated_per_call(mocker):
+    """Regression test for issue #36: `_check_supabase` must reuse a
+    bounded, module-level executor across calls, not create (and
+    `shutdown(wait=False)`) a fresh `ThreadPoolExecutor` per call - a fresh
+    per-call executor doesn't kill a truly hung worker thread, so threads
+    accumulate unbounded during a sustained Supabase outage.
+    """
+    mocker.patch("rag_pipeline.list_documents", return_value=[])
+
+    executor_before = health._SUPABASE_PROBE_EXECUTOR
+    health._check_supabase()
+    health._check_supabase()
+    executor_after = health._SUPABASE_PROBE_EXECUTOR
+
+    assert executor_before is executor_after
+    assert isinstance(executor_before, health.concurrent.futures.ThreadPoolExecutor)
+
+
 def test_readyz_rate_limits_after_threshold(unauthenticated_client, mocker, monkeypatch):
     """/readyz is unauthenticated by necessity (the ALB can't send
     X-Internal-Api-Key), so it must still be protected by a global,

@@ -51,6 +51,23 @@ router = APIRouter()
 # check only cares that the query executes at all, not what it returns.
 _READYZ_PROBE_USER_ID = "00000000-0000-0000-0000-000000000000"
 
+# Module-level, bounded executor for `_check_supabase`'s probe call, created
+# once at import time and reused across every `/readyz` call - see that
+# function's docstring for why a fresh per-call executor (the previous
+# design) is unsafe under a sustained outage: `shutdown(wait=False)` doesn't
+# kill a still-running (hung) worker thread, so a fresh executor per call
+# leaks one thread per hung call, unbounded, for as long as the outage lasts.
+# Bounded to 8 workers so even a sustained outage caps this service's own
+# thread growth from this probe at a fixed number, instead of one thread per
+# concurrent/queued `/readyz` request; callers beyond that still get a
+# time-bounded result via `future.result(timeout=...)` below - a caller can
+# wait behind an already-hung probe up to READYZ_SUPABASE_TIMEOUT_SECONDS
+# longer than before under sustained saturation, an accepted tradeoff for
+# bounding thread growth.
+_SUPABASE_PROBE_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=8, thread_name_prefix="readyz-supabase-probe"
+)
+
 @router.get("/healthz")
 def healthz() -> dict[str, str]:
     return {"status": "ok"}
@@ -76,30 +93,27 @@ def _check_supabase() -> None:
     can be far longer than callers of `/readyz` (the ALB target group health
     check) are willing to wait. `list_documents` itself takes no timeout
     parameter, and this route handler is a sync `def` already running in
-    FastAPI's own threadpool, so the call is submitted to a fresh,
-    single-use, single-worker `ThreadPoolExecutor` (created and torn down
-    per call, not shared across requests - a shared pool would let one slow
-    request's still-running probe thread starve every other concurrent
-    `/readyz` request's own probe behind it in the same queue) and bounded
-    via `Future.result(timeout=)`. `concurrent.futures.TimeoutError`
-    propagates to `readyz()` below exactly like any other failure from
+    FastAPI's own threadpool, so the call is submitted to the bounded,
+    module-level `_SUPABASE_PROBE_EXECUTOR` (created once at import time and
+    reused across every call - see its own docstring for why a fresh
+    per-call executor is unsafe under a sustained outage) and bounded via
+    `Future.result(timeout=)`. `concurrent.futures.TimeoutError` propagates
+    to `readyz()` below exactly like any other failure from
     `rag_pipeline.list_documents` itself - both are caught by the same
     broad `except Exception` there. The submitted call itself is not
     cancelled on timeout (the underlying HTTP client call has no cooperative
     cancellation hook); it's simply left to finish or fail on its own
-    timeline in the background thread (the executor is shut down with
-    `wait=False`, so tearing it down here doesn't block on that), and its
-    result is discarded - acceptable here since this is a cheap,
-    side-effect-free read.
+    timeline in its worker thread, and its result is discarded - acceptable
+    here since this is a cheap, side-effect-free read. Because the executor
+    is bounded (not one-thread-per-call) and reused rather than shut down
+    per call, a still-hung worker from a previous timed-out call keeps
+    occupying one of the pool's fixed slots instead of leaking a brand new
+    OS thread on every subsequent call.
     """
-    executor = concurrent.futures.ThreadPoolExecutor(
-        max_workers=1, thread_name_prefix="readyz-supabase-probe"
+    future = _SUPABASE_PROBE_EXECUTOR.submit(
+        rag_pipeline.list_documents, _READYZ_PROBE_USER_ID
     )
-    try:
-        future = executor.submit(rag_pipeline.list_documents, _READYZ_PROBE_USER_ID)
-        future.result(timeout=READYZ_SUPABASE_TIMEOUT_SECONDS)
-    finally:
-        executor.shutdown(wait=False)
+    future.result(timeout=READYZ_SUPABASE_TIMEOUT_SECONDS)
 
 
 @router.get("/readyz", dependencies=[Depends(require_readyz_rate_limit)])

@@ -34,6 +34,7 @@ class FakeTableQuery:
         self._name = name
         self._op: str | None = None
         self._payload: list[dict[str, Any]] | dict[str, Any] | None = None
+        self._on_conflict: str | None = None
         self._filters: list[tuple[str, Any]] = []
         self._gte_filters: list[tuple[str, Any]] = []
         self._lte_filters: list[tuple[str, Any]] = []
@@ -56,6 +57,14 @@ class FakeTableQuery:
 
     def delete(self) -> "FakeTableQuery":
         self._op = "delete"
+        return self
+
+    def upsert(
+        self, payload: dict[str, Any] | list[dict[str, Any]], on_conflict: str | None = None
+    ) -> "FakeTableQuery":
+        self._op = "upsert"
+        self._payload = payload if isinstance(payload, list) else [payload]
+        self._on_conflict = on_conflict
         return self
 
     def eq(self, field: str, value: Any) -> "FakeTableQuery":
@@ -121,6 +130,42 @@ class FakeTableQuery:
             if self._limit is not None:
                 rows = rows[: self._limit]
             return FakeResponse(rows)
+
+        if self._op == "upsert":
+            assert isinstance(self._payload, list)
+            result_rows: list[dict[str, Any]] = []
+            for row in self._payload:
+                new_row = dict(row)
+                existing = None
+                if self._on_conflict and new_row.get(self._on_conflict) is not None:
+                    existing = next(
+                        (
+                            existing_row
+                            for existing_row in table
+                            if existing_row.get(self._on_conflict)
+                            == new_row.get(self._on_conflict)
+                        ),
+                        None,
+                    )
+                if existing is not None:
+                    # Conflict on the idempotency key: update the existing
+                    # row in place instead of inserting a duplicate - this
+                    # is the behavior under test for issue #38 (a retried
+                    # insert with the same idempotency key must not create a
+                    # second row).
+                    existing.update(new_row)
+                    result_rows.append(existing)
+                    continue
+                new_row.setdefault("id", str(uuid.uuid4()))
+                if self._name == "documents":
+                    new_row.setdefault("status", "pending")
+                    new_row.setdefault(
+                        "upload_date", datetime.now(timezone.utc).isoformat()
+                    )
+                    new_row.setdefault("metadata", {})
+                table.append(new_row)
+                result_rows.append(new_row)
+            return FakeResponse(result_rows)
 
         if self._op == "delete":
             matched = [row for row in table if self._matches(row)]

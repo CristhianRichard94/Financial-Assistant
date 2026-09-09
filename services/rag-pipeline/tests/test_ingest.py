@@ -3,6 +3,8 @@ and the ingest_document wrapper."""
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 
 from rag_pipeline.ingest import (
@@ -118,6 +120,76 @@ def test_process_document_marks_failed_and_reraises_on_parse_error(
     # Pre-existing metadata (set at create_pending_document time) must survive
     # the failure update, not get clobbered.
     assert row["metadata"]["document_type"] == "pdf"
+
+
+# --- Idempotency (issue #38) ------------------------------------------------
+
+
+def test_create_pending_document_uses_upsert_with_idempotency_key_not_insert(
+    fake_settings, mocker
+):
+    """A retried timeout on an `insert` can double-write a row; this asserts
+    the ingest path now goes through `.upsert(..., on_conflict=...)`
+    instead, using a mocked Supabase client (not the fake in-memory one)."""
+    mock_client = mocker.MagicMock()
+    mock_table = mocker.MagicMock()
+    mock_client.table.return_value = mock_table
+    mock_table.upsert.return_value.execute.return_value.data = [{"id": "doc-1"}]
+    mocker.patch("rag_pipeline.ingest.get_supabase_client", return_value=mock_client)
+
+    create_pending_document("statement.pdf", USER_ID, settings=fake_settings)
+
+    mock_table.insert.assert_not_called()
+    mock_table.upsert.assert_called_once()
+    _, kwargs = mock_table.upsert.call_args
+    assert kwargs.get("on_conflict") == "idempotency_key"
+    (payload,), _ = mock_table.upsert.call_args
+    assert "idempotency_key" in payload
+
+
+def test_retried_create_pending_document_call_does_not_create_duplicate_row(
+    fake_supabase, fake_settings, mocker
+):
+    """Simulates a retried `create_pending_document` attempt (same
+    idempotency key reused across the retry, per `_idempotency_key`'s
+    docstring) by fixing the random call-nonce component across two calls -
+    the second call must upsert onto the same row, not create a second one.
+    """
+    mocker.patch("rag_pipeline.ingest.uuid.uuid4", return_value=uuid.UUID(int=42))
+
+    first_id = create_pending_document("statement.pdf", USER_ID, settings=fake_settings)
+    second_id = create_pending_document("statement.pdf", USER_ID, settings=fake_settings)
+
+    assert first_id == second_id
+    assert len(fake_supabase.tables["documents"]) == 1
+
+
+def test_retried_chunk_insert_does_not_create_duplicate_rows(
+    fake_supabase, fake_settings, fake_embeddings, tmp_path
+):
+    """Simulates a retried `document_chunks` insert (e.g. the first
+    `.execute()` attempt timed out ambiguously but actually succeeded
+    server-side, then `execute_with_retry` retried with the identical
+    payload) by re-issuing the exact same upsert call directly - it must
+    upsert onto the same rows, not double them.
+    """
+    document_id = create_pending_document("statement.csv", USER_ID, settings=fake_settings)
+    csv_path = tmp_path / "statement.csv"
+    csv_path.write_text("description,amount\nCoffee,5.00\n")
+
+    process_document(document_id, csv_path, USER_ID, settings=fake_settings)
+    assert len(fake_supabase.tables["document_chunks"]) == 1
+    original_chunk_row = dict(fake_supabase.tables["document_chunks"][0])
+
+    # Re-issue the exact same upsert payload (same idempotency_key), as if
+    # `execute_with_retry` retried the same attempt after an ambiguous
+    # timeout - via the same fake Supabase client `process_document` itself
+    # used, not a fresh (real) client.
+    fake_supabase.table("document_chunks").upsert(
+        [dict(original_chunk_row)], on_conflict="idempotency_key"
+    ).execute()
+
+    assert len(fake_supabase.tables["document_chunks"]) == 1
 
 
 def test_process_document_marks_failed_with_friendly_message_on_no_extractable_text(

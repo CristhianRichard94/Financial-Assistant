@@ -27,9 +27,11 @@ Explicitly NOT guarded against (by design):
 - Bank routing/account numbers beyond generic long-digit-sequence
   detection: nothing in this codebase's document/transaction storage
   identifies a distinct "routing number" pattern (no fixed-width field is
-  modeled anywhere in rag_pipeline), so those are only caught incidentally
-  if they happen to look like a 13-19 digit card-like sequence and pass the
-  Luhn check below.
+  modeled anywhere in rag_pipeline). These are additionally caught by the
+  keyword-gated heuristic below (see `_redact_account_candidates`) when
+  they sit near an account-ish keyword, on top of being caught incidentally
+  by the card-Luhn path when they happen to look like a 13-19 digit
+  card-like sequence and pass the Luhn check.
 """
 
 from __future__ import annotations
@@ -45,6 +47,30 @@ _CARD_CANDIDATE_RE = re.compile(r"(?<!\d)\d(?:[ -]?\d){12,18}(?!\d)")
 
 # SSN-like pattern: XXX-XX-XXXX.
 _SSN_RE = re.compile(r"(?<!\d)\d{3}-\d{2}-\d{4}(?!\d)")
+
+# Matches a bare run of 8-19 digits (no separators), the same length floor
+# used to reduce false positives on the card path but extended down to 8
+# (real-world bank account numbers can be as short as 8 digits, well below
+# the 13-19 digit card-number range) - deliberately NOT Luhn-gated, since
+# real bank account/routing numbers have no checksum at all and would never
+# pass the card path's Luhn check. Gated instead on nearby context keywords
+# (see `_ACCOUNT_CONTEXT_KEYWORDS_RE`) to avoid redacting arbitrary
+# unrelated long numbers (phone numbers, order numbers, reference codes).
+_ACCOUNT_CANDIDATE_RE = re.compile(r"(?<!\d)\d{8,19}(?!\d)")
+
+# Case-insensitive account-ish context keywords. Matched against a window of
+# characters around a candidate digit run (see `_ACCOUNT_CONTEXT_WINDOW_CHARS`
+# below), not the whole text, so a keyword appearing elsewhere in a long
+# answer doesn't cause every unrelated digit run in that answer to be
+# redacted.
+_ACCOUNT_CONTEXT_KEYWORDS_RE = re.compile(r"\b(?:account|acct|iban|routing)\b", re.IGNORECASE)
+
+# Characters of context scanned on each side of a candidate digit run when
+# looking for an account-ish keyword. Wide enough to cover typical phrasing
+# ("Your bank account number is ...", "Routing number ..., account ...")
+# without being so wide it starts picking up unrelated keywords from
+# elsewhere in a paragraph.
+_ACCOUNT_CONTEXT_WINDOW_CHARS = 40
 
 
 def _luhn_checksum(digits: str) -> bool:
@@ -90,6 +116,48 @@ def _redact_ssn_match(match: re.Match[str]) -> str:
     return f"***-**-{last4}"
 
 
+def _redact_account_digits(digits: str) -> str:
+    """Mask all but the last 4 digits of a bare (unformatted) account-like
+    digit run, with no grouping/spacing.
+
+    Deliberately not `_redact_digits` (used by the card path): that helper
+    re-groups the masked output in 4s from the start, which for a run whose
+    length isn't a multiple of 4 (account numbers, unlike card numbers, have
+    no conventional fixed length) can split the preserved last 4 digits
+    across two groups (e.g. "**10 37" instead of keeping "1037" together).
+    """
+    last4 = digits[-4:]
+    return "*" * (len(digits) - 4) + last4
+
+
+def _redact_account_candidates(text: str) -> str:
+    """Redact 8-19 digit runs in `text` that sit near an account-ish
+    keyword (see `_ACCOUNT_CONTEXT_KEYWORDS_RE`), regardless of Luhn
+    checksum - this is additive to (and runs after) the card-Luhn path, so
+    it only ever sees digit runs the card path didn't already redact (a
+    Luhn-valid card number is already masked into a non-digit-run by that
+    point) or chose to leave alone (a Luhn-invalid 13-19 digit run, still
+    present as raw digits, is caught here too if it has account-ish
+    context).
+    """
+
+    def _replace(match: re.Match[str]) -> str:
+        if not _ACCOUNT_CONTEXT_KEYWORDS_RE.search(
+            text[
+                max(0, match.start() - _ACCOUNT_CONTEXT_WINDOW_CHARS) : match.start()
+            ]
+        ) and not _ACCOUNT_CONTEXT_KEYWORDS_RE.search(
+            text[match.end() : match.end() + _ACCOUNT_CONTEXT_WINDOW_CHARS]
+        ):
+            # No account-ish keyword in the surrounding window: leave this
+            # digit run alone, to avoid over-redacting unrelated long
+            # numbers (phone numbers, order numbers, reference codes).
+            return match.group(0)
+        return _redact_account_digits(match.group(0))
+
+    return _ACCOUNT_CANDIDATE_RE.sub(_replace, text)
+
+
 def redact_sensitive_numbers(text: str) -> str:
     """Redact full card/account-number-like and SSN-like digit sequences in
     `text`, returning the redacted text.
@@ -102,4 +170,5 @@ def redact_sensitive_numbers(text: str) -> str:
         return text
     text = _SSN_RE.sub(_redact_ssn_match, text)
     text = _CARD_CANDIDATE_RE.sub(_redact_card_match, text)
+    text = _redact_account_candidates(text)
     return text
