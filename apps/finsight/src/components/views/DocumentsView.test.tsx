@@ -86,7 +86,7 @@ describe("DocumentsView", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText("Couldn't load your documents. Please try again.")
+        screen.getByText("This is a demo — the backend is turned off between uses to keep hosting costs down. Message me and I'll spin it back up so you can see your documents.")
       ).toBeInTheDocument()
     );
   });
