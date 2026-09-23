@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { renderWithIntl as render, screen, waitFor } from "@/test/renderWithIntl";
+import { renderWithIntl as render, screen, waitFor, byFullText } from "@/test/renderWithIntl";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { DocumentsView } from "@/components/views/DocumentsView";
@@ -86,9 +86,10 @@ describe("DocumentsView", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText("Couldn't load your documents. Please try again.")
+        screen.getByText(byFullText("This is a demo — the backend is turned off between uses to keep hosting costs down. Message me and I'll spin it back up so you can see your documents."))
       ).toBeInTheDocument()
     );
+      expect(screen.getByRole("link", { name: "Message me" })).toHaveAttribute("href", "mailto:richardcristhian94@gmail.com")
   });
 
   it("shows the empty state when there are no documents", async () => {

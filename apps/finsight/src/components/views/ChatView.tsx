@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Bot, Clock, Loader2, Send, User } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useTranslations } from "next-intl";
+import { renderContactLink } from "@/lib/contact";
 import Link from "next/link";
 import { KeyboardEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -371,7 +372,7 @@ export function ChatView() {
           // normal list/empty-state branches below instead.
           <div className="flex flex-col items-center justify-center h-full py-16 text-center">
             <AlertCircle className="w-10 h-10 text-[hsl(var(--muted-foreground))]/40 mb-3" />
-            <p className="text-sm text-[hsl(var(--muted-foreground))]">{t("loadError")}</p>
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">{t.rich("loadError", { contact: renderContactLink })}</p>
           </div>
         ) : !displayMessages.length ? (
           <div className="flex flex-col items-center justify-center h-full py-16 text-center space-y-4">

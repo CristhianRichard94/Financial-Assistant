@@ -17,3 +17,7 @@ export function renderWithIntl(ui: ReactElement, options?: RenderOptions) {
 }
 
 export * from "@testing-library/react";
+
+/** Matches an element by full textContent, for copy split across inline tags (e.g. rich-text links). */
+export const byFullText = (text: string) => (_: string, el: Element | null) =>
+  el?.tagName === "P" && el.textContent === text;

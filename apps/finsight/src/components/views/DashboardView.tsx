@@ -17,7 +17,9 @@ import {
   Receipt,
   type LucideIcon,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
+import { renderContactLink } from "@/lib/contact";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import type { DashboardSummary, Transaction } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -214,13 +216,13 @@ function SummaryUnavailableNotice({ onRetry }: { onRetry: () => void }) {
   const t = useTranslations("dashboard");
   return (
     <div className="sm:col-span-3 flex flex-col items-center justify-center gap-2 px-6 py-10 text-center bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl">
-      <p className="text-sm text-[hsl(var(--muted-foreground))]">{t("summaryUnavailable")}</p>
+      <p className="text-sm text-[hsl(var(--muted-foreground))]">{t.rich("summaryUnavailable", { contact: renderContactLink })}</p>
       <InlineRetry onRetry={onRetry} />
     </div>
   );
 }
 
-function PanelEmptyMessage({ message, onRetry }: { message: string; onRetry?: () => void }) {
+function PanelEmptyMessage({ message, onRetry }: { message: ReactNode; onRetry?: () => void }) {
   return (
     <div className="px-6 py-12 flex flex-col items-center justify-center text-center gap-2">
       <Inbox className="w-8 h-8 text-[hsl(var(--muted-foreground))]/40" />
@@ -343,7 +345,7 @@ export function DashboardView() {
                   ))
                 ) : activityError ? (
                   <PanelEmptyMessage
-                    message={t("activityUnavailable")}
+                    message={t.rich("activityUnavailable", { contact: renderContactLink })}
                     onRetry={() => refetchActivity()}
                   />
                 ) : activity && activity.length === 0 ? (
@@ -399,7 +401,7 @@ export function DashboardView() {
                   ))
                 ) : summaryError ? (
                   <PanelEmptyMessage
-                    message={t("categoryError")}
+                    message={t.rich("categoryError", { contact: renderContactLink })}
                     onRetry={() => refetchSummary()}
                   />
                 ) : summary && summary.categoryBreakdown.length === 0 ? (
