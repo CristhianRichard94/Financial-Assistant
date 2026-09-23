@@ -17,6 +17,7 @@ import {
   CloudUpload,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { renderContactLink } from "@/lib/contact";
 import { cn, formatDate, formatFileSize } from "@/lib/utils";
 import type { Document } from "@/lib/types";
 
@@ -247,7 +248,7 @@ export function DocumentsView() {
         ) : isError ? (
           <div className="px-6 py-16 text-center">
             <AlertCircle className="w-10 h-10 text-[hsl(var(--muted-foreground))]/40 mx-auto mb-3" />
-            <p className="text-sm text-[hsl(var(--muted-foreground))]">{t("loadError")}</p>
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">{t.rich("loadError", { contact: renderContactLink })}</p>
           </div>
         ) : !documents?.length ? (
           <div className="px-6 py-16 text-center">

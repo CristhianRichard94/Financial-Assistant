@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { renderWithIntl as render, screen, waitFor } from "@/test/renderWithIntl";
+import { renderWithIntl as render, screen, waitFor, byFullText } from "@/test/renderWithIntl";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider, onlineManager } from "@tanstack/react-query";
 import { ChatView } from "@/components/views/ChatView";
@@ -110,7 +110,7 @@ describe("ChatView", () => {
     renderWithClient(<ChatView />);
 
     await waitFor(() =>
-      expect(screen.getByText("This is a demo — the backend is turned off between uses to keep hosting costs down. Message me and I'll spin it back up so you can chat.")).toBeInTheDocument()
+      expect(screen.getByText(byFullText("This is a demo — the backend is turned off between uses to keep hosting costs down. Message me and I'll spin it back up so you can chat."))).toBeInTheDocument()
     );
   });
 
@@ -332,7 +332,7 @@ describe("ChatView", () => {
     const { container } = renderWithClient(<ChatView />);
 
     await waitFor(() =>
-      expect(screen.getByText("This is a demo — the backend is turned off between uses to keep hosting costs down. Message me and I'll spin it back up so you can chat.")).toBeInTheDocument()
+      expect(screen.getByText(byFullText("This is a demo — the backend is turned off between uses to keep hosting costs down. Message me and I'll spin it back up so you can chat."))).toBeInTheDocument()
     );
 
     const textarea = screen.getByPlaceholderText(/Ask me/);
@@ -392,7 +392,7 @@ describe("ChatView", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByText("This is a demo — the backend is turned off between uses to keep hosting costs down. Message me and I'll spin it back up so you can chat.")).toBeInTheDocument()
+      expect(screen.getByText(byFullText("This is a demo — the backend is turned off between uses to keep hosting costs down. Message me and I'll spin it back up so you can chat."))).toBeInTheDocument()
     );
 
     const textarea = screen.getByPlaceholderText(/Ask me/);
@@ -493,7 +493,7 @@ describe("ChatView", () => {
     // erroring.
     expect(screen.getByText("Hello! How can I help?")).toBeInTheDocument();
     expect(
-      screen.queryByText("This is a demo — the backend is turned off between uses to keep hosting costs down. Message me and I'll spin it back up so you can chat.")
+      screen.queryByText(byFullText("This is a demo — the backend is turned off between uses to keep hosting costs down. Message me and I'll spin it back up so you can chat."))
     ).not.toBeInTheDocument();
 
     // Sending must still be allowed: the reconciliation baseline was already

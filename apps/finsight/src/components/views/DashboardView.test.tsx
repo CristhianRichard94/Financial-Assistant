@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { renderWithIntl as render, screen, waitFor } from "@/test/renderWithIntl";
+import { renderWithIntl as render, screen, waitFor, byFullText } from "@/test/renderWithIntl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { DashboardView } from "@/components/views/DashboardView";
 import type { DashboardSummary, Transaction } from "@/lib/types";
@@ -197,7 +197,7 @@ describe("DashboardView", () => {
     renderWithClient(<DashboardView />);
 
     await waitFor(() =>
-      expect(screen.getByText("This is a demo — the backend is turned off between uses to keep hosting costs down. Message me and I'll spin it back up for you.")).toBeInTheDocument()
+      expect(screen.getByText(byFullText("This is a demo — the backend is turned off between uses to keep hosting costs down. Message me and I'll spin it back up for you."))).toBeInTheDocument()
     );
 
     // This is not the zero-docs onboarding empty state.
@@ -232,7 +232,7 @@ describe("DashboardView", () => {
 
     await waitFor(() => expect(screen.getByText("Total Income")).toBeInTheDocument());
     await waitFor(() =>
-      expect(screen.getByText("This is a demo — the backend is turned off between uses to keep hosting costs down. Message me and I'll spin it back up to show you recent activity.")).toBeInTheDocument()
+      expect(screen.getByText(byFullText("This is a demo — the backend is turned off between uses to keep hosting costs down. Message me and I'll spin it back up to show you recent activity."))).toBeInTheDocument()
     );
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
